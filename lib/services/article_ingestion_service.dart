@@ -52,7 +52,10 @@ class ArticleIngestionService {
           : null,
       savedAt: DateTime.now(),
       authors:
-          [], // Add-on liefert das aktuell noch nicht, aber Modell ist bereit
+          (rawMeta['authors'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
       tags: [],
     );
 

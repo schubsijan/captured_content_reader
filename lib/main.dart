@@ -4,22 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:captured_content_reader/database/app_database.dart'; // DB Import
-import 'package:captured_content_reader/features/library/ui/library_screen.dart'; // Screen Import
+import 'package:captured_content_reader/database/app_database.dart';
+import 'package:captured_content_reader/features/library/ui/library_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
-import 'features/reader/ui/article_reader_screen.dart';
+import 'package:captured_content_reader/features/reader/ui/article_reader_screen.dart';
 
-// DATABASE PROVIDER
-// Wir machen ihn global oder in einer providers.dart Datei.
-// Wichtig: KeepAlive, damit die Verbindung nicht geschlossen wird.
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   ref.onDispose(() => db.close());
   return db;
 });
 
-// --- Native Helper ---
 class AndroidUtils {
   static const _platform = MethodChannel(
     'com.example.captured_content_reader/android',
@@ -57,8 +53,6 @@ void main() async {
   if (Platform.isAndroid || Platform.isIOS) {
     await initializeBackgroundService();
   } else if (Platform.isLinux) {
-    // TODO: Hier später den HTTP Server starten
-    // await HttpImportServer.start();
     print("Linux erkannt: Starte HTTP Server Modus...");
   }
 
@@ -76,6 +70,7 @@ class _MyAppState extends State<MyApp> {
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   // Steuert, ob wir den weißen Hintergrund (Bibliothek) sehen
+  // Startet false (transparent), damit Deep-Link Imports im Hintergrund laufen können.
   bool _showMainUI = false;
 
   @override
@@ -89,36 +84,33 @@ class _MyAppState extends State<MyApp> {
       await Permission.notification.request();
       _initLocalNotifications();
 
-      // ... Logik für Notification Launch (Mobile Only) ...
+      // Check: Wurde App durch Benachrichtigung gestartet?
       final notifLaunchDetails = await flutterLocalNotificationsPlugin
           .getNotificationAppLaunchDetails();
 
       if (notifLaunchDetails?.didNotificationLaunchApp == true) {
-        // Das ist die Fortsetzung von Szenario 2!
-        gIsOverlaySession = true; // Wir sind immer noch im "Geister-Modus"
-
         final payload = notifLaunchDetails!.notificationResponse?.payload;
         if (payload != null) {
-          Future.delayed(Duration.zero, () => _openTaggingOverlay(payload));
+          // Direkt zum Artikel navigieren
+          Future.delayed(Duration.zero, () => _openArticle(payload));
         }
+        // Import Service initialisieren, aber UI Logik ist durch Notification erledigt
         _importStarter.init(onCheckComplete: null);
         return;
       }
     }
 
-    // Für Linux setzen wir UI direkt auf true, da es keine "Hidden Mode" Szenarien gibt
     if (Platform.isLinux) {
       setState(() {
         _showMainUI = true;
       });
-      // Linux braucht den ImportStarter nicht, wenn du alles über HTTP machst.
     }
 
-    // CHECK: Normaler Start oder Deep Link?
+    // CHECK: Normaler Start oder Deep Link (Browser Share)?
     _importStarter.init(
       onCheckComplete: (foundLink) {
         if (foundLink) {
-          // Szenario 2 (Phase 1): Browser Link -> App geht gleich wieder zu.
+          // Szenario 2: Browser Link -> App bleibt transparent/unsichtbar während Import
         } else {
           // Szenario 1: Normaler Start -> Bibliothek anzeigen
           if (mounted) {
@@ -141,72 +133,27 @@ class _MyAppState extends State<MyApp> {
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         if (response.payload != null) {
-          // Szenario 3 (Notification Klick während App läuft)
-          // oder Szenario 2 (wenn App noch nicht gekillt war)
-          _openTaggingOverlay(response.payload!);
+          // Klick auf Benachrichtigung während App läuft (oder im Hintergrund ist)
+          _openArticle(response.payload!);
         }
       },
     );
   }
 
-  void _openTaggingOverlay(String articleId) {
-    // Wenn die Library offen war, machen wir sie "unsichtbar" für den Overlay-Effekt
-    if (_showMainUI) {
+  void _openArticle(String articleId) {
+    // 1. App sichtbar machen (falls sie transparent war)
+    if (!_showMainUI) {
       setState(() {
-        _showMainUI = false;
+        _showMainUI = true;
       });
     }
 
+    // 2. Zum Reader navigieren
     navigatorKey.currentState?.push(
-      PageRouteBuilder(
-        opaque: false,
-        // Wir deaktivieren die Standard-Animation für schnelleres Erscheinen
-        transitionDuration: Duration.zero,
-        reverseTransitionDuration: Duration.zero,
-        pageBuilder: (context, _, __) => TaggingOverlay(
-          articleId: articleId,
-          // Fall 1: Hintergrund geklickt -> Weg hier (Minimieren/Kill)
-          onDismiss: () {
-            Navigator.pop(context);
-            _handleOverlayClosed();
-          },
-          // Fall 2: Lesen geklickt -> App öffnen & Reader starten
-          onRead: () {
-            Navigator.pop(context); // Overlay weg
-
-            // 1. Main UI sichtbar machen (wichtig für Context)
-            setState(() {
-              _showMainUI = true;
-            });
-
-            // 2. Zum Reader navigieren
-            navigatorKey.currentState?.push(
-              MaterialPageRoute(
-                builder: (context) => ArticleReaderScreen(articleId: articleId),
-              ),
-            );
-          },
-        ),
+      MaterialPageRoute(
+        builder: (context) => ArticleReaderScreen(articleId: articleId),
       ),
     );
-  }
-
-  // WICHTIG: Das passiert, wenn das Overlay geschlossen wird
-  void _handleOverlayClosed() {
-    if (gIsOverlaySession) {
-      // Szenario 2: Wir waren nur für das Overlay da -> Komplett weg!
-      AndroidUtils.closeAppCompletely();
-    } else {
-      // Szenario 3: Wir sind eigentlich eine Bibliothek -> UI wiederherstellen & Minimieren
-      setState(() {
-        _showMainUI = true; // Weißer Hintergrund an (für Recents Vorschau)
-      });
-
-      // Kurzer Delay, damit Flutter den Frame malt, bevor wir minimieren
-      Future.delayed(const Duration(milliseconds: 50), () {
-        AndroidUtils.minimizeApp();
-      });
-    }
   }
 
   @override
@@ -218,145 +165,14 @@ class _MyAppState extends State<MyApp> {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true,
+        // Wenn _showMainUI false ist, ist der Hintergrund transparent (sieht aus wie geschlossen)
         scaffoldBackgroundColor: _showMainUI
             ? Colors.white
             : Colors.transparent,
       ),
       home: _showMainUI
-          ? const LibraryScreen() // <--- HIER: Neuer Screen
+          ? const LibraryScreen()
           : const Scaffold(backgroundColor: Colors.transparent),
-    );
-  }
-}
-
-// --- Screens ---
-
-class StartupScreen extends StatelessWidget {
-  const StartupScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("CleanRead Library")),
-      body: const Center(child: Text("Deine Bibliothek (Szenario 1 & 3)")),
-    );
-  }
-}
-
-class TaggingOverlay extends StatelessWidget {
-  final String articleId;
-  final VoidCallback onDismiss; // Schließen & Minimieren
-  final VoidCallback onRead; // App öffnen & Lesen
-
-  const TaggingOverlay({
-    super.key,
-    required this.articleId,
-    required this.onDismiss,
-    required this.onRead,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent, // Wichtig für Transparenz
-      body: Stack(
-        children: [
-          // 1. HINTERGRUND (Klick schließt Overlay)
-          GestureDetector(
-            onTap: onDismiss,
-            child: Container(
-              color: Colors.black54, // Halb-transparentes Abdunkeln
-              width: double.infinity,
-              height: double.infinity,
-            ),
-          ),
-
-          // 2. CONTENT (Unten angedockt)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.all(16), // Etwas Abstand vom Rand
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 20,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min, // Nur so hoch wie nötig
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Titel Zeile
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade100,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.check, color: Colors.green.shade800),
-                      ),
-                      const SizedBox(width: 16),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Gespeichert!",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              "Artikel bereit zum Lesen.",
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Action Button (Volle Breite)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: FilledButton.icon(
-                      onPressed: onRead,
-                      icon: const Icon(Icons.chrome_reader_mode),
-                      label: const Text(
-                        "Jetzt Lesen",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -1,9 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:captured_content_reader/features/shared/ui/article_actions.dart';
+import 'package:captured_content_reader/features/shared/ui/article_meta_display.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../../database/app_database.dart';
@@ -26,6 +27,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   WebViewController? _controller;
   bool _isLoadingFile = true;
   late HighlightService _highlightService;
+
+  bool _uiVisible = true;
+  final GlobalKey _headerKey = GlobalKey();
 
   @override
   void initState() {
@@ -64,7 +68,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     // Jetzt ist 'controller' bereits deklariert und kann im Callback verwendet werden.
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
+      ..setBackgroundColor(Colors.white)
       ..addJavaScriptChannel(
         'CleanReadApp',
         onMessageReceived: _handleJsMessage,
@@ -75,6 +79,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             // HIER ist der Zugriff jetzt erlaubt:
             await _injectHighlightScripts(controller);
             await _restoreHighlights(controller);
+
+            if (mounted) {
+              setState(() {
+                _isLoadingFile = false;
+              });
+            }
           },
           onNavigationRequest: (NavigationRequest request) {
             if (request.url.startsWith('file://')) {
@@ -89,7 +99,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     if (mounted) {
       setState(() {
         _controller = controller;
-        _isLoadingFile = false;
       });
     }
   }
@@ -103,10 +112,39 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         'assets/js/van-1.6.0.nomodule.min.js',
       );
       final appJs = await rootBundle.loadString('assets/js/highlight.js');
+      final scrollJs = await rootBundle.loadString(
+        'assets/js/scroll_listener.js',
+      );
 
       // Reihenfolge wichtig: Erst Framework, dann App
       await controller.runJavaScript(vanJs);
       await controller.runJavaScript(appJs);
+      await controller.runJavaScript(scrollJs);
+
+      // --- 3. DYNAMISCHE HÖHENBERECHNUNG ---
+      // Wir holen uns die RenderBox des Headers
+      final RenderBox? renderBox =
+          _headerKey.currentContext?.findRenderObject() as RenderBox?;
+
+      double headerHeight = 0;
+
+      if (renderBox != null && renderBox.hasSize) {
+        headerHeight = renderBox.size.height;
+      } else {
+        // Fallback, falls UI noch nicht fertig gerendert wurde (sollte selten passieren)
+        // Statusbar + AppBar Standardhöhe
+        headerHeight = MediaQuery.of(context).padding.top + kToolbarHeight + 60;
+      }
+
+      print("Injiziere Padding-Top: ${headerHeight}px");
+
+      // Wir addieren noch z.B. 20px "Luft", damit es nicht klebt
+      final double finalPadding = headerHeight;
+
+      await controller.runJavaScript(
+        "document.body.style.paddingTop = '${finalPadding}px';",
+      );
+
       print("JS Engine injected.");
     } catch (e) {
       print("JS Injection Error: $e");
@@ -132,9 +170,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     try {
       final Map<String, dynamic> payload = jsonDecode(message.message);
       final String action = payload['action'];
-      final dynamic data = payload['data'];
 
-      print("JS Action: $action");
+      if (action == 'ui_control') {
+        final String command = payload['data'];
+        if (command == 'hide_ui' && _uiVisible) {
+          setState(() => _uiVisible = false);
+        } else if (command == 'show_ui' && !_uiVisible) {
+          setState(() => _uiVisible = true);
+        }
+        return;
+      }
+
+      final dynamic data = payload['data'];
 
       switch (action) {
         case 'create':
@@ -160,90 +207,180 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wir holen uns den spezifischen Artikel aus der DB via ID
-    // Tipp: Hier könnte man einen optimierten "Single Article Provider" bauen,
-    // aber wir filtern der Einfachheit halber die Liste oder nutzen ein Future.
-    // Für Phase 1: Wir nehmen an, das Objekt wird übergeben oder wir nutzen StreamBuilder.
-    // Hier ein simpler Stream-Ansatz direkt auf die DB Query für diesen einen Artikel:
-
     final articleStream = ref.watch(singleArticleProvider(widget.articleId));
 
     return Scaffold(
-      appBar: AppBar(
-        title: articleStream.when(
-          loading: () => const Text('Reader'),
-          error: (err, _) => const Text('Reader'),
-          data: (article) {
-            if (article == null) return const Text('Reader');
-            return Text(article.title);
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // TODO: Menü für Tags bearbeiten / Löschen
-            },
+      backgroundColor: Colors.white,
+      // Wir dehnen den Body bis ganz nach oben aus (hinter die Statusbar)
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          // --- EBENE 1: WebView (Vollbild) ---
+          // Nutzt den ganzen Platz, auch hinter der Statusbar
+          Positioned.fill(
+            child: _controller == null
+                ? const SizedBox() // Leerer Platzhalter solange Controller init
+                : AnimatedOpacity(
+                    // Wenn wir noch laden (oder Scripts injizieren), ist Opacity 0.
+                    // Sobald _isLoadingFile false wird, faden wir auf 1.0.
+                    opacity: _isLoadingFile ? 0.0 : 1.0,
+                    duration: const Duration(
+                      milliseconds: 400,
+                    ), // Sanfte Einblendung
+                    curve: Curves.easeOut,
+                    child: WebViewWidget(controller: _controller!),
+                  ),
+          ),
+
+          // Lade-Indikator, solange der "Vorhang" noch zu ist
+          if (_isLoadingFile) const Center(child: CircularProgressIndicator()),
+
+          // --- EBENE 2: Animierter Header (Dynamische Höhe!) ---
+          // Align platziert das Kind standardmäßig oben mittig.
+          Align(
+            alignment: Alignment.topCenter,
+            child: AnimatedSlide(
+              // offset: Offset(x, y)
+              // y = 0.0 -> Normalposition (Sichtbar)
+              // y = -1.0 -> Verschiebung um 100% der eigenen Höhe nach oben (Unsichtbar)
+              offset: _uiVisible ? Offset.zero : const Offset(0, -1),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: _buildFloatingHeader(context, articleStream),
+            ),
           ),
         ],
-      ),
-      body: articleStream.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text("Fehler: $err")),
-        data: (article) {
-          if (article == null)
-            return const Center(child: Text("Artikel nicht gefunden"));
-
-          return Column(
-            children: [
-              // --- Metadata Header ---
-              _buildMetaHeader(context, article),
-              const Divider(height: 1),
-
-              // --- WebView Content ---
-              Expanded(
-                child: _isLoadingFile
-                    ? const Center(child: CircularProgressIndicator())
-                    : WebViewWidget(controller: _controller!),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
 
-  Widget _buildMetaHeader(BuildContext context, Article article) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
+  // Der Header baut sich jetzt so groß wie er Inhalt hat.
+  // Wir müssen nur sicherstellen, dass er die Statusbar berücksichtigt.
+  Widget _buildFloatingHeader(
+    BuildContext context,
+    AsyncValue<Article?> articleStream,
+  ) {
+    // Wir holen uns das "System Padding" (Statusbar Höhe)
+    final topPadding = MediaQuery.of(context).viewPadding.top;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      color: Theme.of(context).colorScheme.surface,
+      key: _headerKey,
+      // Padding oben = Statusbar + etwas Luft
+      padding: EdgeInsets.only(top: topPadding, bottom: 10),
+      width: double.infinity, // Volle Breite
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.96), // Fast deckend
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: const Border(bottom: BorderSide(color: Colors.black12)),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min, // WICHTIG: Schrumpft auf Inhalts-Höhe
         children: [
-          const SizedBox(height: 8),
+          // 1. Fake AppBar Zeile
           Row(
             children: [
-              if (article.siteName != null)
-                Chip(
-                  label: Text(
-                    article.siteName!,
-                    style: const TextStyle(fontSize: 10),
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context),
+              ),
+              Expanded(
+                child: articleStream.when(
+                  data: (article) => Text(
+                    article?.title ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  loading: () => const SizedBox(),
+                  error: (_, __) => const SizedBox(),
                 ),
-              if (article.siteName != null) const SizedBox(width: 8),
-              Text(
-                "Gespeichert: ${dateFormat.format(article.savedAt)}",
-                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              // Menü Button
+              articleStream.maybeWhen(
+                data: (article) {
+                  if (article == null) return const SizedBox();
+                  return _buildOptionsMenu(context, article);
+                },
+                orElse: () => const SizedBox(),
               ),
             ],
           ),
-          // Hier könnten Tags als Wrap-Widget folgen
+
+          // 2. Meta Informationen (Optional, wenn vorhanden)
+          articleStream.when(
+            data: (article) {
+              if (article == null) return const SizedBox();
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: ArticleMetaDisplay(article: article, compact: true),
+              );
+            },
+            loading: () => const SizedBox(),
+            error: (_, __) => const SizedBox(),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildOptionsMenu(BuildContext context, Article article) {
+    final isRead = article.isRead;
+
+    return PopupMenuButton<String>(
+      onSelected: (value) async {
+        if (value == 'toggleRead') {
+          // NEU: Einzeiler Aufruf
+          ArticleActions.toggleReadStatus(context, ref, article);
+        } else if (value == 'delete') {
+          // NEU: Dialog + Löschen Logik
+          final confirm = await ArticleActions.confirmDelete(context);
+          if (confirm && context.mounted) {
+            await ArticleActions.executeDelete(
+              context,
+              ref,
+              article.id,
+              popScreen: true,
+            );
+          }
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'toggleRead',
+          child: Row(
+            children: [
+              Icon(
+                isRead ? Icons.mark_email_unread : Icons.check_circle,
+                color: Colors.grey[700],
+              ),
+              const SizedBox(width: 12),
+              Text(
+                isRead ? 'Als ungelesen markieren' : 'Als gelesen markieren',
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(
+            children: [
+              const Icon(Icons.delete, color: Colors.red),
+              const SizedBox(width: 12),
+              const Text('Löschen', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

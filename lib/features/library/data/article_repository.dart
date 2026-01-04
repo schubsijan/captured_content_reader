@@ -79,4 +79,19 @@ class ArticleRepository {
       rethrow;
     }
   }
+
+  /// Löscht einen Artikel komplett (Ordner + DB Eintrag).
+  /// ACHTUNG: Das ist destruktiv und kann ohne Backup nicht rückgängig gemacht werden.
+  Future<void> deleteArticle(String articleId) async {
+    // 1. Ordner im Dateisystem löschen
+    final appDir = await _storage.getAppDirectory();
+    final articleDir = Directory(p.join(appDir.path, articleId));
+
+    if (await articleDir.exists()) {
+      await articleDir.delete(recursive: true);
+    }
+
+    // 2. Aus der Datenbank entfernen
+    await (_db.delete(_db.articles)..where((t) => t.id.equals(articleId))).go();
+  }
 }

@@ -105,6 +105,18 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _authorsMeta = const VerificationMeta(
+    'authors',
+  );
+  @override
+  late final GeneratedColumn<String> authors = GeneratedColumn<String>(
+    'authors',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -116,6 +128,7 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     isRead,
     progress,
     fileLastModified,
+    authors,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -194,6 +207,12 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         ),
       );
     }
+    if (data.containsKey('authors')) {
+      context.handle(
+        _authorsMeta,
+        authors.isAcceptableOrUnknown(data['authors']!, _authorsMeta),
+      );
+    }
     return context;
   }
 
@@ -239,6 +258,10 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}file_last_modified'],
       ),
+      authors: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}authors'],
+      )!,
     );
   }
 
@@ -258,6 +281,7 @@ class Article extends DataClass implements Insertable<Article> {
   final bool isRead;
   final double progress;
   final DateTime? fileLastModified;
+  final String authors;
   const Article({
     required this.id,
     required this.title,
@@ -268,6 +292,7 @@ class Article extends DataClass implements Insertable<Article> {
     required this.isRead,
     required this.progress,
     this.fileLastModified,
+    required this.authors,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -287,6 +312,7 @@ class Article extends DataClass implements Insertable<Article> {
     if (!nullToAbsent || fileLastModified != null) {
       map['file_last_modified'] = Variable<DateTime>(fileLastModified);
     }
+    map['authors'] = Variable<String>(authors);
     return map;
   }
 
@@ -307,6 +333,7 @@ class Article extends DataClass implements Insertable<Article> {
       fileLastModified: fileLastModified == null && nullToAbsent
           ? const Value.absent()
           : Value(fileLastModified),
+      authors: Value(authors),
     );
   }
 
@@ -327,6 +354,7 @@ class Article extends DataClass implements Insertable<Article> {
       fileLastModified: serializer.fromJson<DateTime?>(
         json['fileLastModified'],
       ),
+      authors: serializer.fromJson<String>(json['authors']),
     );
   }
   @override
@@ -342,6 +370,7 @@ class Article extends DataClass implements Insertable<Article> {
       'isRead': serializer.toJson<bool>(isRead),
       'progress': serializer.toJson<double>(progress),
       'fileLastModified': serializer.toJson<DateTime?>(fileLastModified),
+      'authors': serializer.toJson<String>(authors),
     };
   }
 
@@ -355,6 +384,7 @@ class Article extends DataClass implements Insertable<Article> {
     bool? isRead,
     double? progress,
     Value<DateTime?> fileLastModified = const Value.absent(),
+    String? authors,
   }) => Article(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -367,6 +397,7 @@ class Article extends DataClass implements Insertable<Article> {
     fileLastModified: fileLastModified.present
         ? fileLastModified.value
         : this.fileLastModified,
+    authors: authors ?? this.authors,
   );
   Article copyWithCompanion(ArticlesCompanion data) {
     return Article(
@@ -383,6 +414,7 @@ class Article extends DataClass implements Insertable<Article> {
       fileLastModified: data.fileLastModified.present
           ? data.fileLastModified.value
           : this.fileLastModified,
+      authors: data.authors.present ? data.authors.value : this.authors,
     );
   }
 
@@ -397,7 +429,8 @@ class Article extends DataClass implements Insertable<Article> {
           ..write('savedAt: $savedAt, ')
           ..write('isRead: $isRead, ')
           ..write('progress: $progress, ')
-          ..write('fileLastModified: $fileLastModified')
+          ..write('fileLastModified: $fileLastModified, ')
+          ..write('authors: $authors')
           ..write(')'))
         .toString();
   }
@@ -413,6 +446,7 @@ class Article extends DataClass implements Insertable<Article> {
     isRead,
     progress,
     fileLastModified,
+    authors,
   );
   @override
   bool operator ==(Object other) =>
@@ -426,7 +460,8 @@ class Article extends DataClass implements Insertable<Article> {
           other.savedAt == this.savedAt &&
           other.isRead == this.isRead &&
           other.progress == this.progress &&
-          other.fileLastModified == this.fileLastModified);
+          other.fileLastModified == this.fileLastModified &&
+          other.authors == this.authors);
 }
 
 class ArticlesCompanion extends UpdateCompanion<Article> {
@@ -439,6 +474,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   final Value<bool> isRead;
   final Value<double> progress;
   final Value<DateTime?> fileLastModified;
+  final Value<String> authors;
   final Value<int> rowid;
   const ArticlesCompanion({
     this.id = const Value.absent(),
@@ -450,6 +486,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.isRead = const Value.absent(),
     this.progress = const Value.absent(),
     this.fileLastModified = const Value.absent(),
+    this.authors = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ArticlesCompanion.insert({
@@ -462,6 +499,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.isRead = const Value.absent(),
     this.progress = const Value.absent(),
     this.fileLastModified = const Value.absent(),
+    this.authors = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -477,6 +515,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Expression<bool>? isRead,
     Expression<double>? progress,
     Expression<DateTime>? fileLastModified,
+    Expression<String>? authors,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -489,6 +528,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       if (isRead != null) 'is_read': isRead,
       if (progress != null) 'progress': progress,
       if (fileLastModified != null) 'file_last_modified': fileLastModified,
+      if (authors != null) 'authors': authors,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -503,6 +543,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Value<bool>? isRead,
     Value<double>? progress,
     Value<DateTime?>? fileLastModified,
+    Value<String>? authors,
     Value<int>? rowid,
   }) {
     return ArticlesCompanion(
@@ -515,6 +556,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       isRead: isRead ?? this.isRead,
       progress: progress ?? this.progress,
       fileLastModified: fileLastModified ?? this.fileLastModified,
+      authors: authors ?? this.authors,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -549,6 +591,9 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     if (fileLastModified.present) {
       map['file_last_modified'] = Variable<DateTime>(fileLastModified.value);
     }
+    if (authors.present) {
+      map['authors'] = Variable<String>(authors.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -567,6 +612,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
           ..write('isRead: $isRead, ')
           ..write('progress: $progress, ')
           ..write('fileLastModified: $fileLastModified, ')
+          ..write('authors: $authors, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1049,6 +1095,7 @@ typedef $$ArticlesTableCreateCompanionBuilder =
       Value<bool> isRead,
       Value<double> progress,
       Value<DateTime?> fileLastModified,
+      Value<String> authors,
       Value<int> rowid,
     });
 typedef $$ArticlesTableUpdateCompanionBuilder =
@@ -1062,6 +1109,7 @@ typedef $$ArticlesTableUpdateCompanionBuilder =
       Value<bool> isRead,
       Value<double> progress,
       Value<DateTime?> fileLastModified,
+      Value<String> authors,
       Value<int> rowid,
     });
 
@@ -1157,6 +1205,11 @@ class $$ArticlesTableFilterComposer
 
   ColumnFilters<DateTime> get fileLastModified => $composableBuilder(
     column: $table.fileLastModified,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get authors => $composableBuilder(
+    column: $table.authors,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1264,6 +1317,11 @@ class $$ArticlesTableOrderingComposer
     column: $table.fileLastModified,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get authors => $composableBuilder(
+    column: $table.authors,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ArticlesTableAnnotationComposer
@@ -1305,6 +1363,9 @@ class $$ArticlesTableAnnotationComposer
     column: $table.fileLastModified,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get authors =>
+      $composableBuilder(column: $table.authors, builder: (column) => column);
 
   Expression<T> tagIndexRefs<T extends Object>(
     Expression<T> Function($$TagIndexTableAnnotationComposer a) f,
@@ -1394,6 +1455,7 @@ class $$ArticlesTableTableManager
                 Value<bool> isRead = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<DateTime?> fileLastModified = const Value.absent(),
+                Value<String> authors = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ArticlesCompanion(
                 id: id,
@@ -1405,6 +1467,7 @@ class $$ArticlesTableTableManager
                 isRead: isRead,
                 progress: progress,
                 fileLastModified: fileLastModified,
+                authors: authors,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1418,6 +1481,7 @@ class $$ArticlesTableTableManager
                 Value<bool> isRead = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<DateTime?> fileLastModified = const Value.absent(),
+                Value<String> authors = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ArticlesCompanion.insert(
                 id: id,
@@ -1429,6 +1493,7 @@ class $$ArticlesTableTableManager
                 isRead: isRead,
                 progress: progress,
                 fileLastModified: fileLastModified,
+                authors: authors,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

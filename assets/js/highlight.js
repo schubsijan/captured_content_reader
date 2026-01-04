@@ -10,11 +10,14 @@ class CleanReadEngine {
 
     // Farbschema
     this.colors = [
-      { hex: '#f8cf01', name: 'Yellow' }, // Transparenz im CSS regeln, nicht im Hex, für bessere Sichtbarkeit
-      { hex: '#f86464', name: 'Red' },
-      { hex: '#5eb037', name: 'Green' },
-      { hex: '#30a6e1', name: 'Blue' },
-      { hex: '#9e87df', name: 'Purple' }
+      { hex: '#F8CF01', name: 'Yellow' },
+      { hex: '#F86464', name: 'Red' },
+      { hex: '#5EB037', name: 'Green' },
+      { hex: '#30A6E1', name: 'Blue' },
+      { hex: '#9E87DF', name: 'Purple' },
+      { hex: '#DF6CE8', name: 'Magenta' },
+      { hex: '#EB9436', name: 'Orange' },
+      { hex: '#A6A6A6', name: 'Gray' }
     ];
 
     this.activeHighlightId = van.state(null);
@@ -52,13 +55,11 @@ class CleanReadEngine {
   }
 
   _renderColorMenu() {
-    // ... (Dein existierender Menu Code - unverändert lassen) ...
-    // Nur der Style beim mark: padding etwas reduzieren für saubereren Textfluss
     const menu = div({
       onclick: (e) => e.stopPropagation(),
       style: () => `
         position: fixed;
-        bottom: ${this.activeHighlightId.val ? '30px' : '-120px'};
+        bottom: ${this.activeHighlightId.val ? '60px' : '-120px'};
         left: 50%;
         transform: translateX(-50%);
         background: white;
@@ -74,7 +75,7 @@ class CleanReadEngine {
       this.colors.map(c =>
         button({
           style: () => `
-            width: 32px; height: 32px; border-radius: 50%;
+            width: 30px; height: 30px; border-radius: 50%;
             border: 2px solid ${this.activeColor.val === c.hex ? '#333' : 'transparent'};
             background-color: ${c.hex}80; // 50% Transparenz hier hinzufügen
             cursor: pointer; transition: all 0.1s;

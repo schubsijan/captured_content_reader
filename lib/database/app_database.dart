@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -13,7 +14,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -25,6 +26,10 @@ class AppDatabase extends _$AppDatabase {
         if (from < 2) {
           // Wir fügen die Spalte hinzu.
           await m.addColumn(articles, articles.fileLastModified);
+        }
+        if (from < 3) {
+          // <--- NEU: Migration für Version 3
+          await m.addColumn(articles, articles.authors);
         }
       },
     );
@@ -46,6 +51,7 @@ class AppDatabase extends _$AppDatabase {
           isRead: Value(meta.isRead),
           progress: Value(meta.progress),
           fileLastModified: Value(fileModified),
+          authors: Value(jsonEncode(meta.authors)),
         ),
       );
 

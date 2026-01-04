@@ -16,6 +16,8 @@ class Articles extends Table {
 
   DateTimeColumn get fileLastModified => dateTime().nullable()();
 
+  TextColumn get authors => text().withDefault(const Constant('[]'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

@@ -9,8 +9,8 @@ import 'package:captured_content_reader/services/article_ingestion_service.dart'
 import 'package:path/path.dart' as p;
 
 // WICHTIG: Neue IDs, damit Android die Settings neu lädt!
-const statusChannelId = 'import_status_v3';
-const successChannelId = 'import_success_v3';
+const statusChannelId = 'import_status_v5';
+const successChannelId = 'import_success_v5';
 
 const notificationId = 888;
 const successNotificationId = 889;
@@ -180,15 +180,15 @@ Future<void> _processImport(
     await localNav.show(
       successNotificationId,
       'Import erfolgreich!',
-      'Tippe hier zum Bearbeiten.',
+      'Tippe zum Öffnen.',
       NotificationDetails(
         android: AndroidNotificationDetails(
           successChannelId,
           'Import Erfolg',
           importance: Importance.max,
           priority: Priority.max,
-          enableVibration: true,
-          playSound: true,
+          playSound: false,
+          enableVibration: false,
           timeoutAfter: 5000,
         ),
       ),

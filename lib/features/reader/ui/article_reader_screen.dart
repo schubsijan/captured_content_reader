@@ -136,14 +136,20 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         headerHeight = MediaQuery.of(context).padding.top + kToolbarHeight + 60;
       }
 
-      print("Injiziere Padding-Top: ${headerHeight}px");
-
       // Wir addieren noch z.B. 20px "Luft", damit es nicht klebt
       final double finalPadding = headerHeight;
 
-      await controller.runJavaScript(
-        "document.body.style.paddingTop = '${finalPadding}px';",
-      );
+      // viewPadding.bottom gibt uns die Höhe der System-Gesten-Leiste / Buttons
+      final double navBarHeight = MediaQuery.of(context).viewPadding.bottom;
+      // Wir geben noch 30px extra dazu, damit der Text nicht am Rand klebt
+      final double bottomPadding = navBarHeight + 30;
+
+      // --- CSS INJECTION ---
+      // Wir setzen beides in einem Rutsch
+      await controller.runJavaScript("""
+        document.body.style.paddingTop = '${finalPadding}px';
+        document.body.style.paddingBottom = '${bottomPadding}px';
+      """);
 
       print("JS Engine injected.");
     } catch (e) {

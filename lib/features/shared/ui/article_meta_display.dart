@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'package:captured_content_reader/database/app_database.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class ArticleMetaDisplay extends StatelessWidget {
-  final dynamic article; // Nutze den generierten 'Article' Typ, wenn möglich
+  final Article article; // Nutze den generierten 'Article' Typ, wenn möglich
   final Widget? middleContent; // Optional: Für den Titel in der Library
   final bool compact; // Optional: Falls du Abstände variieren willst
 
@@ -21,7 +22,7 @@ class ArticleMetaDisplay extends StatelessWidget {
     // 1. Autoren Logik kapseln
     List<String> authorsList = [];
     try {
-      if (article.authors != null && article.authors.isNotEmpty) {
+      if (article.authors.isNotEmpty) {
         authorsList = List<String>.from(jsonDecode(article.authors));
       }
     } catch (_) {
@@ -36,7 +37,8 @@ class ArticleMetaDisplay extends StatelessWidget {
         // --- ZEILE 1: Site Name & Datum ---
         Row(
           children: [
-            if (article.siteName != null) ...[
+            // 1. Site Name (nur wenn vorhanden)
+            if (article.siteName != null)
               Flexible(
                 child: Text(
                   article.siteName!,
@@ -48,6 +50,9 @@ class ArticleMetaDisplay extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+
+            // 2. Trenner (nur wenn BEIDE vorhanden sind)
+            if (article.siteName != null && article.publishedAt != null) ...[
               const SizedBox(width: 8),
               const Text(
                 "•",
@@ -55,10 +60,15 @@ class ArticleMetaDisplay extends StatelessWidget {
               ),
               const SizedBox(width: 8),
             ],
-            Text(
-              dateFormat.format(article.savedAt),
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
+
+            // 3. Datum (nur wenn vorhanden)
+            if (article.publishedAt != null)
+              Text(
+                dateFormat.format(
+                  article.publishedAt!,
+                ), // Hier ist ! sicher, da oben geprüft
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
           ],
         ),
 

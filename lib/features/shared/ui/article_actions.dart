@@ -1,3 +1,4 @@
+import 'package:captured_content_reader/database/app_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../library/providers/library_providers.dart';
@@ -7,7 +8,7 @@ class ArticleActions {
   static void toggleReadStatus(
     BuildContext context,
     WidgetRef ref,
-    dynamic article, // 'dynamic' oder der generierte 'Article' Typ
+    Article article, // 'dynamic' oder der generierte 'Article' Typ
   ) {
     final bool currentStatus = article.isRead;
     final bool newStatus = !currentStatus;

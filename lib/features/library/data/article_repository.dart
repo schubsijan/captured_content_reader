@@ -94,4 +94,27 @@ class ArticleRepository {
     // 2. Aus der Datenbank entfernen
     await (_db.delete(_db.articles)..where((t) => t.id.equals(articleId))).go();
   }
+
+  /// Aktualisiert die Metadaten eines Artikels (Titel, Autoren, etc.)
+  Future<void> updateArticleMeta(String articleId, ArticleMeta newMeta) async {
+    final appDir = await _storage.getAppDirectory();
+    final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+
+    if (!await metaFile.exists()) return;
+
+    // 1. FILE UPDATE
+    // Wir schreiben das komplette neue Meta-Objekt
+    final tempFile = File('${metaFile.path}.tmp');
+    await tempFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(newMeta.toJson()),
+      flush: true,
+    );
+    await tempFile.rename(metaFile.path);
+
+    // 2. DB UPDATE
+    // Wir nutzen die existierende Index-Logik, da sie alles abdeckt (Tags, Autoren, etc.)
+    // und auch das fileLastModified aktualisiert.
+    final fileLastModified = DateTime.now(); // oder metaFile.lastModifiedSync()
+    await _db.indexArticle(newMeta, fileLastModified);
+  }
 }

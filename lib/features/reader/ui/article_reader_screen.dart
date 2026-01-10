@@ -1,13 +1,16 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:captured_content_reader/features/reader/ui/edit_meta_dialog.dart';
 import 'package:captured_content_reader/features/shared/ui/article_actions.dart';
 import 'package:captured_content_reader/features/shared/ui/article_meta_display.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../../database/app_database.dart';
+import '../../../models/article_meta.dart';
 import '../../../services/storage_access.dart'; // Dein StorageService
 import '../../library/providers/library_providers.dart'; // Zugriff auf DB/Repo
 import '../../../models/highlight.dart';
@@ -266,16 +269,14 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     BuildContext context,
     AsyncValue<Article?> articleStream,
   ) {
-    // Wir holen uns das "System Padding" (Statusbar Höhe)
     final topPadding = MediaQuery.of(context).viewPadding.top;
 
     return Container(
       key: _headerKey,
-      // Padding oben = Statusbar + etwas Luft
       padding: EdgeInsets.only(top: topPadding, bottom: 10),
-      width: double.infinity, // Volle Breite
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96), // Fast deckend
+        color: Colors.white.withOpacity(0.96),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -286,9 +287,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         border: const Border(bottom: BorderSide(color: Colors.black12)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min, // WICHTIG: Schrumpft auf Inhalts-Höhe
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 1. Fake AppBar Zeile
+          // 1. Fake AppBar Zeile (Titel + Zurück + Menü)
           Row(
             children: [
               IconButton(
@@ -310,24 +311,69 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   error: (_, __) => const SizedBox(),
                 ),
               ),
-              // Menü Button
+              // Hier nur noch das Menü (Browser Icon ist weg)
               articleStream.maybeWhen(
-                data: (article) {
-                  if (article == null) return const SizedBox();
-                  return _buildOptionsMenu(context, article);
-                },
+                data: (article) => article != null
+                    ? _buildOptionsMenu(context, article)
+                    : const SizedBox(),
                 orElse: () => const SizedBox(),
               ),
             ],
           ),
 
-          // 2. Meta Informationen (Optional, wenn vorhanden)
+          // 2. Meta Informationen + Browser Icon (NEU ANGEORDNET)
           articleStream.when(
             data: (article) {
               if (article == null) return const SizedBox();
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: ArticleMetaDisplay(article: article, compact: true),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment
+                      .start, // Oben bündig (bei Webseite/Datum)
+                  children: [
+                    // Meta-Daten nehmen den meisten Platz ein
+                    Expanded(
+                      child: ArticleMetaDisplay(
+                        article: article,
+                        compact: true,
+                      ),
+                    ),
+
+                    // Das Browser Icon rechts daneben
+                    if (article.url.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      // Wir nutzen ein kleineres Icon-Widget, damit es nicht zu viel Platz wegnimmt
+                      InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () async {
+                          final uri = Uri.parse(article.url);
+                          try {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Fehler: $e")),
+                              );
+                            }
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Icon(
+                            Icons.public,
+                            size: 20,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withOpacity(0.6),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               );
             },
             loading: () => const SizedBox(),
@@ -346,6 +392,32 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         if (value == 'toggleRead') {
           // NEU: Einzeiler Aufruf
           ArticleActions.toggleReadStatus(context, ref, article);
+        } else if (value == 'editMeta') {
+          // --- NEU: EDIT METADATA ---
+          // Wir rekonstruieren ein ArticleMeta Objekt aus dem DB-Eintrag
+          List<String> authors = [];
+          try {
+            authors = List<String>.from(jsonDecode(article.authors));
+          } catch (_) {}
+
+          final meta = ArticleMeta(
+            uuid: article.id,
+            url: article.url,
+            title: article.title,
+            siteName: article.siteName,
+            publishedAt: article.publishedAt,
+            savedAt: article.savedAt,
+            isRead: article.isRead,
+            progress: article.progress,
+            authors: authors,
+            tags:
+                [], // Tags laden wir hier nicht explizit, werden beim Save aber auch nicht überschrieben, da wir tags im Repo behalten müssen.
+            // ACHTUNG: Das updateArticleMeta im Repo überschreibt die meta.json.
+            // Wenn wir Tags behalten wollen, müssen wir sie eigentlich erst aus der existierenden meta.json lesen.
+            // Siehe unten für die korrigierte Logik!
+          );
+
+          await _openEditDialog(context, article, meta);
         } else if (value == 'delete') {
           // NEU: Dialog + Löschen Logik
           final confirm = await ArticleActions.confirmDelete(context);
@@ -375,6 +447,16 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             ],
           ),
         ),
+        PopupMenuItem<String>(
+          value: 'editMeta',
+          child: Row(
+            children: [
+              Icon(Icons.edit, color: Colors.grey[700]),
+              const SizedBox(width: 12),
+              const Text('Metadaten bearbeiten'),
+            ],
+          ),
+        ),
         const PopupMenuDivider(),
         PopupMenuItem<String>(
           value: 'delete',
@@ -388,5 +470,40 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _openEditDialog(
+    BuildContext context,
+    Article article,
+    ArticleMeta partialMeta,
+  ) async {
+    // Um Datenverlust bei Tags zu vermeiden (die nicht in der Article-DB Tabelle stehen, sondern in TagIndex),
+    // lesen wir am besten kurz die echte meta.json Datei ein, bevor wir editieren.
+
+    // Kleiner Hack: Wir nutzen StorageService direkt oder indirekt.
+    // Sauberer wäre eine Methode im Repository: getMeta(id).
+    // Aber wir können es hier pragmatisch lösen, indem wir im Dialog (EditMetaDialog)
+    // im initState die Datei laden oder wir machen es hier:
+
+    final appDir = await StorageService().getAppDirectory();
+    final metaFile = File(p.join(appDir.path, article.id, 'meta.json'));
+
+    ArticleMeta fullMeta = partialMeta;
+
+    if (await metaFile.exists()) {
+      try {
+        final content = await metaFile.readAsString();
+        fullMeta = ArticleMeta.fromJson(jsonDecode(content));
+      } catch (e) {
+        print("Error reading meta for edit: $e");
+      }
+    }
+
+    if (context.mounted) {
+      await showDialog(
+        context: context,
+        builder: (context) => EditMetaDialog(article: article, meta: fullMeta),
+      );
+    }
   }
 }

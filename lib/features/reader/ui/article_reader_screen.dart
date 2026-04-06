@@ -89,10 +89,30 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               });
             }
           },
-          onNavigationRequest: (NavigationRequest request) {
+          onNavigationRequest: (NavigationRequest request) async {
+            // 1. Lokale Dateien (der Artikel selbst) erlauben
             if (request.url.startsWith('file://')) {
               return NavigationDecision.navigate;
             }
+
+            // 2. Externe Links (http/https) abfangen und im externen Browser öffnen
+            if (request.url.startsWith('http://') ||
+                request.url.startsWith('https://')) {
+              final uri = Uri.parse(request.url);
+              try {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Fehler beim Öffnen des Links: $e")),
+                  );
+                }
+              }
+              // Navigation im WebView verhindern, damit der Artikel geöffnet bleibt
+              return NavigationDecision.prevent;
+            }
+
+            // 3. Alle anderen Schemata (mailto, tel, etc.) vorerst blockieren
             return NavigationDecision.prevent;
           },
         ),

@@ -174,7 +174,11 @@ class CleanReadEngine {
       ),
       div({ style: "width: 1px; background: #ddd; margin: 0 4px;" }),
       button({
-        style: "background: none; border: none; font-size: 18px;",
+        style: "background: none; border: none; font-size: 18px; cursor: pointer;",
+        onclick: () => this._sendToFlutter('edit_note', { id: this.activeHighlightId.val })
+      }, "📝"),
+      button({
+        style: "background: none; border: none; font-size: 18px; cursor: pointer;",
         onclick: () => this.deleteHighlight(this.activeHighlightId.val)
       }, "🗑️")
     );
@@ -363,7 +367,7 @@ class CleanReadEngine {
 
     newNodes.push(
       mark({
-        class: this.highlightClass,
+        class: this.highlightClass, // Keine Modifikation mehr hier
         "data-id": id,
         "data-color": color,
         style: `background-color: ${color}80; color: inherit; padding: 0;`,
@@ -380,7 +384,7 @@ class CleanReadEngine {
     textNode.replaceWith(...newNodes);
   }
 
-  _serializeRange(range, color, id) {
+  _serializeRange(range, color, id, note = null) { // <--- Hier fehlt das "note = null"
     let container = range.commonAncestorContainer;
     while (container && container.nodeType === Node.TEXT_NODE) {
       container = container.parentNode;
@@ -397,7 +401,8 @@ class CleanReadEngine {
       xpath: this._getXPath(container),
       startOffset: startOffset,
       endOffset: startOffset + text.length,
-      color: color
+      color: color,
+      note: note // Jetzt ist "note" definiert und wirft keinen Fehler mehr
     };
   }
 
@@ -454,8 +459,11 @@ class CleanReadEngine {
       charCount = nextCharCount;
       if (startFound && endFound) break;
     }
+
     if (startFound && endFound) {
       this._highlightRangeSecure(range, data.color, data.id);
+      // NACH dem Einfügen ins DOM wird geprüft, ob es eine Notiz gibt und das Icon gesetzt
+      this.updateNoteIcon(data.id, data.note);
     }
   }
 
@@ -595,8 +603,13 @@ class CleanReadEngine {
     const currentRange = this._reconstructRangeFromId(id);
     if (!currentRange) return;
 
-    // Altes Highlight optisch ausblenden
     const existingMarks = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
+
+    // --- HIER IST DIE KORREKTUR ---
+    // Status UND Text der Notiz GANZ AM ANFANG merken, bevor wir irgendwas löschen!
+    const hadNote = Array.from(existingMarks).some(el => el.classList.contains('has-note'));
+    const existingNoteText = existingMarks.length > 0 ? existingMarks[0].getAttribute('data-note') : null;
+
     existingMarks.forEach(el => el.style.opacity = '0.2');
 
     // Anker setzen
@@ -619,7 +632,6 @@ class CleanReadEngine {
     this.handlesContainer.style.pointerEvents = 'none';
     handleElement.style.pointerEvents = 'auto';
 
-    // WICHTIG: Wir merken uns immer die letzte gültige Range aus dem Move-Event
     let lastValidRange = null;
 
     const onPointerMove = (moveEvent) => {
@@ -646,7 +658,6 @@ class CleanReadEngine {
         newRange.setEnd(caretInfo.node, caretInfo.offset);
       }
 
-      // Speichern für onPointerUp
       lastValidRange = newRange;
 
       this._renderPreview(newRange, color);
@@ -671,41 +682,32 @@ class CleanReadEngine {
       let finalRange = null;
 
       if (lastValidRange) {
-        // Wir setzen temporäre Marker an Start und Ende der Range.
-        // Warum? Weil _removeHighlightVisualsOnly und normalize() die Text-Knoten zerstören/verändern.
-        // Marker sind Elemente (Spans), die bleiben stabil im Baum, egal was mit dem Text passiert.
-
         const startMarker = document.createElement('span');
         const endMarker = document.createElement('span');
 
-        // Marker einfügen (Vorsicht: Range clonen, damit wir nicht mutieren während wir lesen)
         const rStart = lastValidRange.cloneRange();
-        rStart.collapse(true); // Zum Start
+        rStart.collapse(true);
         rStart.insertNode(startMarker);
 
         const rEnd = lastValidRange.cloneRange();
-        rEnd.collapse(false); // Zum Ende
+        rEnd.collapse(false);
         rEnd.insertNode(endMarker);
 
-        // JETZT Aufräumen (zerstört Textknoten, aber Marker bleiben)
         const anchorEl = document.getElementById('cr-drag-anchor');
         if (anchorEl) anchorEl.remove();
 
+        // HIER WERDEN DIE ALTEN MARKS GELÖSCHT
         this._removeHighlightVisualsOnly(id, true);
-        document.body.normalize(); // Textknoten mergen
+        document.body.normalize();
 
-        // Jetzt bauen wir die finale Range zwischen unseren stabilen Markern
         finalRange = document.createRange();
         finalRange.setStartAfter(startMarker);
         finalRange.setEndBefore(endMarker);
 
-        // Marker wieder entfernen
         startMarker.remove();
         endMarker.remove();
-        // Nochmal normalize für Sauberkeit
         document.body.normalize();
       } else {
-        // Fallback, falls gar nicht bewegt wurde
         const anchorEl = document.getElementById('cr-drag-anchor');
         if (anchorEl) anchorEl.remove();
         this._removeHighlightVisualsOnly(id, true);
@@ -714,9 +716,14 @@ class CleanReadEngine {
 
       // Commit
       if (finalRange) {
-        const serialized = this._serializeRange(finalRange, color, id);
+        // --- HIER IST DIE 2. KORREKTUR ---
+        // Wir übergeben 'existingNoteText', das wir ganz oben sicher gespeichert haben!
+        const serialized = this._serializeRange(finalRange, color, id, existingNoteText);
 
         this._highlightRangeSecure(finalRange, color, id);
+
+        // Icon und Attribut wieder setzen
+        this.updateNoteIcon(id, existingNoteText);
 
         this._sendToFlutter('delete', { id: id });
         setTimeout(() => this._sendToFlutter('create', serialized), 50);
@@ -759,6 +766,40 @@ class CleanReadEngine {
 
       // Auch statische Styles wie 'rotate' oder 'borderRadius' könnten hier
       // bei Bedarf dynamisch gesetzt werden, aber 'top' ist das Wichtige.
+    }
+  }
+  scrollToHighlight(id) {
+    const elements = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
+    if (elements.length > 0) {
+      const el = elements[0];
+
+      // Zum Highlight scrollen
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Blink-Effekt anwenden
+      elements.forEach(mark => {
+        const originalBg = mark.style.backgroundColor;
+        mark.style.transition = 'background-color 0.4s ease';
+        mark.style.backgroundColor = '#ffff00'; // Gelber Flash
+
+        setTimeout(() => {
+          mark.style.backgroundColor = originalBg;
+          // Transition entfernen, um spätere Farbwechsel nicht zu stören
+          setTimeout(() => mark.style.transition = '', 400);
+        }, 800);
+      });
+    }
+  }
+  updateNoteIcon(id, noteText) {
+    const elements = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
+    elements.forEach(el => {
+      el.classList.remove('has-note');
+      el.removeAttribute('data-note');
+    });
+
+    if (noteText && noteText.trim().length > 0 && elements.length > 0) {
+      elements[0].classList.add('has-note');
+      elements[0].setAttribute('data-note', noteText); // Notiz im DOM parken
     }
   }
 }

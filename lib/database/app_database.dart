@@ -6,15 +6,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'tables.dart';
 import '../models/article_meta.dart';
+import '../models/article_note.dart';
 
 part 'app_database.g.dart';
 
-@DriftDatabase(tables: [Articles, TagIndex, AuthorIndex])
+@DriftDatabase(tables: [Articles, TagIndex, AuthorIndex, ArticleNotes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -30,6 +31,13 @@ class AppDatabase extends _$AppDatabase {
         if (from < 3) {
           // <--- NEU: Migration für Version 3
           await m.addColumn(articles, articles.authors);
+        }
+        if (from < 4) {
+          // <--- NEU: Migration für Version 4
+          await m.addColumn(articles, articles.note);
+        }
+        if (from < 5) {
+          await m.createTable(articleNotes);
         }
       },
     );
@@ -52,6 +60,7 @@ class AppDatabase extends _$AppDatabase {
           progress: Value(meta.progress),
           fileLastModified: Value(fileModified),
           authors: Value(jsonEncode(meta.authors)),
+          note: Value(meta.note),
         ),
       );
 
@@ -74,6 +83,24 @@ class AppDatabase extends _$AppDatabase {
       for (final author in meta.authors) {
         await into(authorIndex).insert(
           AuthorIndexCompanion.insert(name: author, articleId: meta.uuid),
+        );
+      }
+    });
+  }
+
+  Future<void> syncNotes(String articleId, List<ArticleNote> notes) async {
+    return transaction(() async {
+      await (delete(
+        articleNotes,
+      )..where((t) => t.articleId.equals(articleId))).go();
+      for (final note in notes) {
+        await into(articleNotes).insert(
+          ArticleNotesCompanion.insert(
+            id: note.id,
+            articleId: articleId,
+            content: note.content,
+            createdAt: note.createdAt,
+          ),
         );
       }
     });

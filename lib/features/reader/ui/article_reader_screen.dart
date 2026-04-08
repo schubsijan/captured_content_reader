@@ -1,8 +1,12 @@
 import 'dart:io';
+import '../../../main.dart';
+import 'notes_bottom_sheet.dart';
 import 'dart:convert';
 import 'package:captured_content_reader/features/reader/ui/edit_meta_dialog.dart';
 import 'package:captured_content_reader/features/shared/ui/article_actions.dart';
 import 'package:captured_content_reader/features/shared/ui/article_meta_display.dart';
+import 'package:captured_content_reader/features/shared/ui/plain_text_note_dialog.dart';
+import '../services/article_note_service.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +35,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   bool _isLoadingFile = true;
   late HighlightService _highlightService;
 
+  late ArticleNoteService _noteService;
+
   bool _uiVisible = true;
   final GlobalKey _headerKey = GlobalKey();
 
@@ -43,6 +49,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   Future<void> _initSequence() async {
     await _highlightService.init();
+
+    final db = ref.read(databaseProvider);
+    _noteService = ArticleNoteService(widget.articleId, db);
+    await _noteService.init();
+
     await _prepareWebView();
   }
 
@@ -129,8 +140,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   /// Lädt die JS-Dateien aus den Assets und führt sie aus
   Future<void> _injectHighlightScripts(WebViewController controller) async {
     try {
-      // Wir laden die Dateien frisch aus den Assets
-      // Tipp: Strings könnten gecached werden, aber für Dev ist live laden besser
       final vanJs = await rootBundle.loadString(
         'assets/js/van-1.6.0.nomodule.min.js',
       );
@@ -139,10 +148,34 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         'assets/js/scroll_listener.js',
       );
 
-      // Reihenfolge wichtig: Erst Framework, dann App
       await controller.runJavaScript(vanJs);
       await controller.runJavaScript(appJs);
       await controller.runJavaScript(scrollJs);
+
+      // --- NEU: Zotero-Icon per CSS Inject ---
+      // Wir zeichnen das Icon als sicheres SVG direkt in CSS,
+      // so ist es extrem schnell und unabhängig von Schriftarten/Emojis.
+      await controller.runJavaScript("""
+        const style = document.createElement('style');
+        style.innerHTML = `
+          .cr-highlight.has-note::before {
+            content: '';
+            display: inline-block;
+            width: 14px;
+            height: 16px;
+            /* Zotero-Style SVG als Background */
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='16' viewBox='0 0 14 16'%3E%3Cpath d='M0.5,0.5 H9.5 L13.5,4.5 V15.5 H0.5 Z' fill='%23FFD54F' stroke='%23D4A719' stroke-width='1'/%3E%3Cpath d='M9.5,0.5 V4.5 H13.5' fill='%23FFE57F' stroke='%23D4A719' stroke-width='1'/%3E%3C/svg%3E");
+            background-size: contain;
+            background-repeat: no-repeat;
+            margin-right: 4px;
+            margin-left: 2px;
+            vertical-align: text-bottom;
+            position: relative;
+            top: -1px;
+          }
+        `;
+        document.head.appendChild(style);
+      """);
 
       // --- 3. DYNAMISCHE HÖHENBERECHNUNG ---
       // Wir holen uns die RenderBox des Headers
@@ -217,10 +250,54 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           final highlight = Highlight.fromJson(data);
           await _highlightService.addHighlight(highlight);
           break;
-        case 'update':
+        case 'update': // Für Farbänderungen aus dem JS
           final id = data['id'];
           final color = data['color'];
-          await _highlightService.updateHighlight(id, color);
+          await _highlightService.updateHighlight(id, newColor: color);
+          break;
+
+        case 'edit_note': // Für Notizänderungen aus dem JS-Menü
+          final id = data['id'];
+
+          // Echte aktuelle Notiz laden
+          final highlights = await _highlightService.loadHighlights();
+          final highlight = highlights.firstWhere((h) => h.id == id);
+
+          // --- NEU: Prüfen, ob schon eine Notiz existiert ---
+          final hasNote =
+              highlight.note != null && highlight.note!.trim().isNotEmpty;
+
+          if (mounted) {
+            final newNote = await showDialog<String>(
+              context: context,
+              builder: (context) => PlainTextNoteDialog(
+                // Titel dynamisch anpassen
+                title: hasNote
+                    ? 'Highlight Notiz bearbeiten'
+                    : 'Notiz hinzufügen',
+                initialText: highlight.note ?? '',
+                // --- NEU: Lösch-Button anzeigen, wenn Notiz existiert ---
+                showDeleteButton: hasNote,
+              ),
+            );
+
+            if (newNote != null) {
+              final trimmed = newNote.trim();
+              final isNotEmpty = trimmed.isNotEmpty;
+
+              await _highlightService.updateHighlight(
+                id,
+                newNote: isNotEmpty ? trimmed : null,
+                clearNote: !isNotEmpty,
+              );
+
+              // WebView live updaten
+              final jsNote = isNotEmpty ? jsonEncode(trimmed) : 'null';
+              await _controller?.runJavaScript(
+                "window.cleanReadEngine.updateNoteIcon('$id', $jsNote);",
+              );
+            }
+          }
           break;
         case 'delete':
           final id = data['id'];
@@ -392,6 +469,33 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                         ),
                       ),
                     ],
+
+                    const SizedBox(width: 4),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (context) => NotesBottomSheet(
+                            noteService: _noteService,
+                            highlightService: _highlightService, // NEU
+                            webViewController: _controller, // NEU
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.description_outlined,
+                          size: 20,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.8),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -410,11 +514,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return PopupMenuButton<String>(
       onSelected: (value) async {
         if (value == 'toggleRead') {
-          // NEU: Einzeiler Aufruf
           ArticleActions.toggleReadStatus(context, ref, article);
         } else if (value == 'editMeta') {
-          // --- NEU: EDIT METADATA ---
-          // Wir rekonstruieren ein ArticleMeta Objekt aus dem DB-Eintrag
           List<String> authors = [];
           try {
             authors = List<String>.from(jsonDecode(article.authors));
@@ -430,16 +531,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             isRead: article.isRead,
             progress: article.progress,
             authors: authors,
-            tags:
-                [], // Tags laden wir hier nicht explizit, werden beim Save aber auch nicht überschrieben, da wir tags im Repo behalten müssen.
-            // ACHTUNG: Das updateArticleMeta im Repo überschreibt die meta.json.
-            // Wenn wir Tags behalten wollen, müssen wir sie eigentlich erst aus der existierenden meta.json lesen.
-            // Siehe unten für die korrigierte Logik!
+            tags: [],
           );
 
           await _openEditDialog(context, article, meta);
         } else if (value == 'delete') {
-          // NEU: Dialog + Löschen Logik
           final confirm = await ArticleActions.confirmDelete(context);
           if (confirm && context.mounted) {
             await ArticleActions.executeDelete(

@@ -22,6 +22,8 @@ class ArticleMeta with _$ArticleMeta {
 
     @Default(false) bool isRead,
     @Default(0.0) double progress,
+
+    String? note,
   }) = _ArticleMeta;
 
   factory ArticleMeta.fromJson(Map<String, dynamic> json) =>

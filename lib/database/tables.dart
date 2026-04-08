@@ -18,6 +18,8 @@ class Articles extends Table {
 
   TextColumn get authors => text().withDefault(const Constant('[]'))();
 
+  TextColumn get note => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -40,4 +42,16 @@ class AuthorIndex extends Table {
 
   @override
   Set<Column> get primaryKey => {name, articleId};
+}
+
+@DataClassName('DbArticleNote')
+class ArticleNotes extends Table {
+  TextColumn get id => text()();
+  TextColumn get articleId =>
+      text().references(Articles, #id, onDelete: KeyAction.cascade)();
+  TextColumn get content => text()();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }

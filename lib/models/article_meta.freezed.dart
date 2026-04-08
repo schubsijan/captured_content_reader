@@ -33,6 +33,7 @@ mixin _$ArticleMeta {
   DateTime get savedAt => throw _privateConstructorUsedError;
   bool get isRead => throw _privateConstructorUsedError;
   double get progress => throw _privateConstructorUsedError;
+  String? get note => throw _privateConstructorUsedError;
 
   /// Serializes this ArticleMeta to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -62,6 +63,7 @@ abstract class $ArticleMetaCopyWith<$Res> {
     DateTime savedAt,
     bool isRead,
     double progress,
+    String? note,
   });
 }
 
@@ -90,6 +92,7 @@ class _$ArticleMetaCopyWithImpl<$Res, $Val extends ArticleMeta>
     Object? savedAt = null,
     Object? isRead = null,
     Object? progress = null,
+    Object? note = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -133,6 +136,10 @@ class _$ArticleMetaCopyWithImpl<$Res, $Val extends ArticleMeta>
                 ? _value.progress
                 : progress // ignore: cast_nullable_to_non_nullable
                       as double,
+            note: freezed == note
+                ? _value.note
+                : note // ignore: cast_nullable_to_non_nullable
+                      as String?,
           )
           as $Val,
     );
@@ -159,6 +166,7 @@ abstract class _$$ArticleMetaImplCopyWith<$Res>
     DateTime savedAt,
     bool isRead,
     double progress,
+    String? note,
   });
 }
 
@@ -186,6 +194,7 @@ class __$$ArticleMetaImplCopyWithImpl<$Res>
     Object? savedAt = null,
     Object? isRead = null,
     Object? progress = null,
+    Object? note = freezed,
   }) {
     return _then(
       _$ArticleMetaImpl(
@@ -229,6 +238,10 @@ class __$$ArticleMetaImplCopyWithImpl<$Res>
             ? _value.progress
             : progress // ignore: cast_nullable_to_non_nullable
                   as double,
+        note: freezed == note
+            ? _value.note
+            : note // ignore: cast_nullable_to_non_nullable
+                  as String?,
       ),
     );
   }
@@ -248,6 +261,7 @@ class _$ArticleMetaImpl implements _ArticleMeta {
     required this.savedAt,
     this.isRead = false,
     this.progress = 0.0,
+    this.note,
   }) : _authors = authors,
        _tags = tags;
 
@@ -294,10 +308,12 @@ class _$ArticleMetaImpl implements _ArticleMeta {
   @override
   @JsonKey()
   final double progress;
+  @override
+  final String? note;
 
   @override
   String toString() {
-    return 'ArticleMeta(uuid: $uuid, url: $url, title: $title, siteName: $siteName, publishedAt: $publishedAt, authors: $authors, tags: $tags, savedAt: $savedAt, isRead: $isRead, progress: $progress)';
+    return 'ArticleMeta(uuid: $uuid, url: $url, title: $title, siteName: $siteName, publishedAt: $publishedAt, authors: $authors, tags: $tags, savedAt: $savedAt, isRead: $isRead, progress: $progress, note: $note)';
   }
 
   @override
@@ -317,7 +333,8 @@ class _$ArticleMetaImpl implements _ArticleMeta {
             (identical(other.savedAt, savedAt) || other.savedAt == savedAt) &&
             (identical(other.isRead, isRead) || other.isRead == isRead) &&
             (identical(other.progress, progress) ||
-                other.progress == progress));
+                other.progress == progress) &&
+            (identical(other.note, note) || other.note == note));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -334,6 +351,7 @@ class _$ArticleMetaImpl implements _ArticleMeta {
     savedAt,
     isRead,
     progress,
+    note,
   );
 
   /// Create a copy of ArticleMeta
@@ -362,6 +380,7 @@ abstract class _ArticleMeta implements ArticleMeta {
     required final DateTime savedAt,
     final bool isRead,
     final double progress,
+    final String? note,
   }) = _$ArticleMetaImpl;
 
   factory _ArticleMeta.fromJson(Map<String, dynamic> json) =
@@ -387,6 +406,8 @@ abstract class _ArticleMeta implements ArticleMeta {
   bool get isRead;
   @override
   double get progress;
+  @override
+  String? get note;
 
   /// Create a copy of ArticleMeta
   /// with the given fields replaced by the non-null parameter values.

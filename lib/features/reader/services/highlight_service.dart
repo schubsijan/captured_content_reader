@@ -34,11 +34,15 @@ class HighlightService {
     await _saveList(list);
   }
 
-  Future<void> updateHighlight(String id, String newColor) async {
+  Future<void> updateHighlight(
+    String id, {
+    String? newColor,
+    String? newNote,
+    bool clearNote = false, // <--- NEU: Explizit löschen
+  }) async {
     final list = await loadHighlights();
     final index = list.indexWhere((h) => h.id == id);
     if (index != -1) {
-      // Kopie erstellen mit neuer Farbe
       final old = list[index];
       list[index] = Highlight(
         id: old.id,
@@ -47,8 +51,9 @@ class HighlightService {
         textNodeIndex: old.textNodeIndex,
         startOffset: old.startOffset,
         endOffset: old.endOffset,
-        color: newColor,
-        note: old.note,
+        color: newColor ?? old.color,
+        // Wenn clearNote true ist, wird null gespeichert. Sonst der neue oder alte Wert.
+        note: clearNote ? null : (newNote ?? old.note),
       );
       await _saveList(list);
     }

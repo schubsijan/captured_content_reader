@@ -26,6 +26,7 @@ _$ArticleMetaImpl _$$ArticleMetaImplFromJson(Map<String, dynamic> json) =>
       savedAt: DateTime.parse(json['savedAt'] as String),
       isRead: json['isRead'] as bool? ?? false,
       progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+      note: json['note'] as String?,
     );
 
 Map<String, dynamic> _$$ArticleMetaImplToJson(_$ArticleMetaImpl instance) =>
@@ -40,4 +41,5 @@ Map<String, dynamic> _$$ArticleMetaImplToJson(_$ArticleMetaImpl instance) =>
       'savedAt': instance.savedAt.toIso8601String(),
       'isRead': instance.isRead,
       'progress': instance.progress,
+      'note': instance.note,
     };

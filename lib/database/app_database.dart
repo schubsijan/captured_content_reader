@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'tables.dart';
 import '../models/article_meta.dart';
 import '../models/article_note.dart';
+import '../models/highlight.dart';
 
 part 'app_database.g.dart';
 
@@ -15,7 +16,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration {
@@ -39,13 +40,22 @@ class AppDatabase extends _$AppDatabase {
         if (from < 5) {
           await m.createTable(articleNotes);
         }
+        if (from < 6) {
+          // <--- NEU
+          await m.addColumn(articleNotes, articleNotes.tags);
+        }
       },
     );
   }
 
   // --- Core Logic: Re-Indexing ---
   // Diese Funktion macht die DB synchron mit der meta.json (File-First!)
-  Future<void> indexArticle(ArticleMeta meta, DateTime fileModified) async {
+  Future<void> indexArticle(
+    ArticleMeta meta,
+    DateTime fileModified, {
+    List<ArticleNote> notes = const [],
+    List<Highlight> highlights = const [],
+  }) async {
     return transaction(() async {
       // 1. Artikel Tabelle Upsert
       await into(articles).insertOnConflictUpdate(
@@ -64,12 +74,20 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
-      // 2. Tags bereinigen und neu setzen (Delete & Insert Strategie)
+      // 2. ALLE Tags sammeln (Set verhindert Duplikate)
+      final allTags = <String>{...meta.tags};
+      for (final n in notes) {
+        allTags.addAll(n.tags);
+      }
+      for (final h in highlights) {
+        allTags.addAll(h.tags);
+      }
+
+      // 3. Tag-Index bereinigen und neu setzen
       await (delete(
         tagIndex,
       )..where((t) => t.articleId.equals(meta.uuid))).go();
-
-      for (final tag in meta.tags) {
+      for (final tag in allTags) {
         await into(
           tagIndex,
         ).insert(TagIndexCompanion.insert(name: tag, articleId: meta.uuid));
@@ -85,7 +103,29 @@ class AppDatabase extends _$AppDatabase {
           AuthorIndexCompanion.insert(name: author, articleId: meta.uuid),
         );
       }
+
+      await (delete(
+        articleNotes,
+      )..where((t) => t.articleId.equals(meta.uuid))).go();
+      for (final note in notes) {
+        await into(articleNotes).insert(
+          ArticleNotesCompanion.insert(
+            id: note.id,
+            articleId: meta.uuid,
+            content: note.content,
+            createdAt: note.createdAt,
+            tags: Value(jsonEncode(note.tags)), // <--- NEU
+          ),
+        );
+      }
     });
+  }
+
+  Future<List<String>> getAllTags() async {
+    final query = selectOnly(tagIndex, distinct: true)
+      ..addColumns([tagIndex.name]);
+    final results = await query.get();
+    return results.map((row) => row.read(tagIndex.name)!).toList();
   }
 
   Future<void> syncNotes(String articleId, List<ArticleNote> notes) async {

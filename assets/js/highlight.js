@@ -384,7 +384,7 @@ class CleanReadEngine {
     textNode.replaceWith(...newNodes);
   }
 
-  _serializeRange(range, color, id, note = null) { // <--- Hier fehlt das "note = null"
+  _serializeRange(range, color, id, note = null, tags = []) { // <--- Hier fehlt das "note = null"
     let container = range.commonAncestorContainer;
     while (container && container.nodeType === Node.TEXT_NODE) {
       container = container.parentNode;
@@ -402,7 +402,8 @@ class CleanReadEngine {
       startOffset: startOffset,
       endOffset: startOffset + text.length,
       color: color,
-      note: note // Jetzt ist "note" definiert und wirft keinen Fehler mehr
+      note: note, // Jetzt ist "note" definiert und wirft keinen Fehler mehr
+      tags: tags
     };
   }
 
@@ -462,8 +463,8 @@ class CleanReadEngine {
 
     if (startFound && endFound) {
       this._highlightRangeSecure(range, data.color, data.id);
-      // NACH dem Einfügen ins DOM wird geprüft, ob es eine Notiz gibt und das Icon gesetzt
-      this.updateNoteIcon(data.id, data.note);
+      // HIER GEÄNDERT: Wir übergeben data.tags als dritten Parameter
+      this.updateNoteIcon(data.id, data.note, data.tags);
     }
   }
 
@@ -716,14 +717,18 @@ class CleanReadEngine {
 
       // Commit
       if (finalRange) {
-        // --- HIER IST DIE 2. KORREKTUR ---
-        // Wir übergeben 'existingNoteText', das wir ganz oben sicher gespeichert haben!
-        const serialized = this._serializeRange(finalRange, color, id, existingNoteText);
+        const oldEl = document.querySelector(`.${this.highlightClass}[data-id="${id}"]`);
+        const existingNoteText = oldEl ? oldEl.getAttribute('data-note') : null;
+
+        // --- NEU: Alte Tags aus dem DOM holen ---
+        const existingTagsStr = oldEl ? oldEl.getAttribute('data-tags') : '[]';
+        const existingTags = JSON.parse(existingTagsStr || '[]');
+
+        // Parameter erweitern
+        const serialized = this._serializeRange(finalRange, color, id, existingNoteText, existingTags);
 
         this._highlightRangeSecure(finalRange, color, id);
-
-        // Icon und Attribut wieder setzen
-        this.updateNoteIcon(id, existingNoteText);
+        this.updateNoteIcon(id, existingNoteText, existingTagsStr);
 
         this._sendToFlutter('delete', { id: id });
         setTimeout(() => this._sendToFlutter('create', serialized), 50);
@@ -790,16 +795,40 @@ class CleanReadEngine {
       });
     }
   }
-  updateNoteIcon(id, noteText) {
+  updateNoteIcon(id, noteText, tagsArray) {
     const elements = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
     elements.forEach(el => {
       el.classList.remove('has-note');
       el.removeAttribute('data-note');
+      el.removeAttribute('data-tags');
     });
 
-    if (noteText && noteText.trim().length > 0 && elements.length > 0) {
-      elements[0].classList.add('has-note');
-      elements[0].setAttribute('data-note', noteText); // Notiz im DOM parken
+    if (elements.length > 0) {
+      let hasContent = false;
+
+      // 1. Text-Notiz checken
+      if (noteText && noteText.trim().length > 0) {
+        elements[0].setAttribute('data-note', noteText);
+        hasContent = true;
+      }
+
+      // 2. Tags checken (Sicher parsen, falls es als String oder Array kommt)
+      let parsedTags = [];
+      if (typeof tagsArray === 'string') {
+        try { parsedTags = JSON.parse(tagsArray); } catch (e) { }
+      } else if (Array.isArray(tagsArray)) {
+        parsedTags = tagsArray;
+      }
+
+      if (parsedTags.length > 0) {
+        elements[0].setAttribute('data-tags', JSON.stringify(parsedTags));
+        hasContent = true;
+      }
+
+      // 3. Icon setzen, wenn Text ODER Tags vorhanden sind
+      if (hasContent) {
+        elements[0].classList.add('has-note');
+      }
     }
   }
 }

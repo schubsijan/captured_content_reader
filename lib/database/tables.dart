@@ -52,6 +52,8 @@ class ArticleNotes extends Table {
   TextColumn get content => text()();
   DateTimeColumn get createdAt => dateTime()();
 
+  TextColumn get tags => text().withDefault(const Constant('[]'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

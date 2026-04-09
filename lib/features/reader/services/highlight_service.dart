@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import '../../../models/highlight.dart';
 import '../../../services/storage_access.dart';
+import '../../../services/library_sync_service.dart';
 
 class HighlightService {
   final String articleId;
+  final LibrarySyncService syncService;
   late final File _file;
 
-  HighlightService(this.articleId);
+  HighlightService(this.articleId, this.syncService);
 
   Future<void> init() async {
     final storage = StorageService();
@@ -38,7 +40,8 @@ class HighlightService {
     String id, {
     String? newColor,
     String? newNote,
-    bool clearNote = false, // <--- NEU: Explizit löschen
+    bool clearNote = false,
+    List<String>? newTags,
   }) async {
     final list = await loadHighlights();
     final index = list.indexWhere((h) => h.id == id);
@@ -52,8 +55,8 @@ class HighlightService {
         startOffset: old.startOffset,
         endOffset: old.endOffset,
         color: newColor ?? old.color,
-        // Wenn clearNote true ist, wird null gespeichert. Sonst der neue oder alte Wert.
         note: clearNote ? null : (newNote ?? old.note),
+        tags: newTags ?? old.tags,
       );
       await _saveList(list);
     }
@@ -65,17 +68,12 @@ class HighlightService {
     await _saveList(list);
   }
 
-  // Atomares Schreiben für Syncthing-Kompatibilität
   Future<void> _saveList(List<Highlight> list) async {
     final jsonString = jsonEncode(list.map((e) => e.toJson()).toList());
-
-    // 1. In temporäre Datei schreiben
     final tempFile = File('${_file.path}.tmp');
     await tempFile.writeAsString(jsonString, flush: true);
-
-    // 2. Umbenennen (Atomar auf POSIX/Android)
     await tempFile.rename(_file.path);
 
-    // TODO: Hier könnte man den DB-Indexer triggern, wenn man nach Notizen suchen will
+    await syncService.syncSingleArticle(articleId);
   }
 }

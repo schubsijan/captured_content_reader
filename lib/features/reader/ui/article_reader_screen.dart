@@ -43,15 +43,17 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   @override
   void initState() {
     super.initState();
-    _highlightService = HighlightService(widget.articleId);
     _initSequence();
   }
 
   Future<void> _initSequence() async {
+    final syncService = ref.read(librarySyncServiceProvider);
+
+    _highlightService = HighlightService(widget.articleId, syncService);
     await _highlightService.init();
 
     final db = ref.read(databaseProvider);
-    _noteService = ArticleNoteService(widget.articleId, db);
+    _noteService = ArticleNoteService(widget.articleId, db, syncService);
     await _noteService.init();
 
     await _prepareWebView();
@@ -259,43 +261,54 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         case 'edit_note': // Für Notizänderungen aus dem JS-Menü
           final id = data['id'];
 
-          // Echte aktuelle Notiz laden
           final highlights = await _highlightService.loadHighlights();
           final highlight = highlights.firstWhere((h) => h.id == id);
-
-          // --- NEU: Prüfen, ob schon eine Notiz existiert ---
           final hasNote =
               highlight.note != null && highlight.note!.trim().isNotEmpty;
 
+          // Hol dir auch hier die globalen Tags für das Autocomplete
+          final availableTags = await ref.read(allTagsProvider.future);
+
           if (mounted) {
-            final newNote = await showDialog<String>(
+            final result = await showDialog<(String, List<String>)>(
               context: context,
               builder: (context) => PlainTextNoteDialog(
-                // Titel dynamisch anpassen
                 title: hasNote
                     ? 'Highlight Notiz bearbeiten'
                     : 'Notiz hinzufügen',
                 initialText: highlight.note ?? '',
-                // --- NEU: Lösch-Button anzeigen, wenn Notiz existiert ---
+                initialTags: highlight.tags, // <--- Die alten Tags reinreichen
+                availableTags: availableTags, // <--- Autocomplete füttern
                 showDeleteButton: hasNote,
               ),
             );
 
-            if (newNote != null) {
-              final trimmed = newNote.trim();
-              final isNotEmpty = trimmed.isNotEmpty;
+            if (result != null) {
+              final newText = result.$1.trim();
+              final newTags = result.$2;
+              final isNotEmpty = newText.isNotEmpty;
 
+              // 1. JSON/Datenbank updaten
               await _highlightService.updateHighlight(
                 id,
-                newNote: isNotEmpty ? trimmed : null,
+                newNote: isNotEmpty ? newText : null,
                 clearNote: !isNotEmpty,
+                newTags: newTags, // <--- Tags mitspeichern
               );
 
-              // WebView live updaten
-              final jsNote = isNotEmpty ? jsonEncode(trimmed) : 'null';
+              // 2. LIVE UPDATE IM BROWSER
+              final jsNote = isNotEmpty ? jsonEncode(newText) : 'null';
+              final jsTags = jsonEncode(
+                newTags,
+              ); // Wird sicher zu ["tag1", "tag2"]
+
+              // --- HIER WAR DER FEHLER: $jsTags muss als 3. Parameter übergeben werden ---
               await _controller?.runJavaScript(
-                "window.cleanReadEngine.updateNoteIcon('$id', $jsNote);",
+                "window.cleanReadEngine.updateNoteIcon('$id', $jsNote, $jsTags);",
               );
+
+              // 3. Globale Tag-Liste aktualisieren, falls ein neues Tag erfunden wurde
+              ref.invalidate(allTagsProvider);
             }
           }
           break;

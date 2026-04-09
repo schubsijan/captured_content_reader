@@ -9,6 +9,7 @@ class ArticleNote with _$ArticleNote {
     required String id,
     required String content,
     required DateTime createdAt,
+    @Default([]) List<String> tags,
   }) = _ArticleNote;
 
   factory ArticleNote.fromJson(Map<String, dynamic> json) =>

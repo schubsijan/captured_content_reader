@@ -9,6 +9,7 @@ class Highlight {
   final int endOffset;
   final String color;
   final String? note; // Für später
+  final List<String> tags;
 
   Highlight({
     required this.id,
@@ -19,6 +20,7 @@ class Highlight {
     required this.endOffset,
     required this.color,
     this.note,
+    this.tags = const [],
   });
 
   Map<String, dynamic> toJson() {
@@ -31,6 +33,7 @@ class Highlight {
       'endOffset': endOffset,
       'color': color,
       'note': note,
+      'tags': tags,
     };
   }
 
@@ -44,6 +47,9 @@ class Highlight {
       endOffset: map['endOffset'] as int,
       color: map['color'] as String,
       note: map['note'] as String?,
+      tags:
+          (map['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          [],
     );
   }
 }

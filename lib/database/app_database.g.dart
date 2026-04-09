@@ -1146,8 +1146,24 @@ class $ArticleNotesTable extends ArticleNotes
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
   @override
-  List<GeneratedColumn> get $columns => [id, articleId, content, createdAt];
+  late final GeneratedColumn<String> tags = GeneratedColumn<String>(
+    'tags',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    articleId,
+    content,
+    createdAt,
+    tags,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1189,6 +1205,12 @@ class $ArticleNotesTable extends ArticleNotes
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('tags')) {
+      context.handle(
+        _tagsMeta,
+        tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta),
+      );
+    }
     return context;
   }
 
@@ -1214,6 +1236,10 @@ class $ArticleNotesTable extends ArticleNotes
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      tags: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tags'],
+      )!,
     );
   }
 
@@ -1228,11 +1254,13 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
   final String articleId;
   final String content;
   final DateTime createdAt;
+  final String tags;
   const DbArticleNote({
     required this.id,
     required this.articleId,
     required this.content,
     required this.createdAt,
+    required this.tags,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1241,6 +1269,7 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
     map['article_id'] = Variable<String>(articleId);
     map['content'] = Variable<String>(content);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['tags'] = Variable<String>(tags);
     return map;
   }
 
@@ -1250,6 +1279,7 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
       articleId: Value(articleId),
       content: Value(content),
       createdAt: Value(createdAt),
+      tags: Value(tags),
     );
   }
 
@@ -1263,6 +1293,7 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
       articleId: serializer.fromJson<String>(json['articleId']),
       content: serializer.fromJson<String>(json['content']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      tags: serializer.fromJson<String>(json['tags']),
     );
   }
   @override
@@ -1273,6 +1304,7 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
       'articleId': serializer.toJson<String>(articleId),
       'content': serializer.toJson<String>(content),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'tags': serializer.toJson<String>(tags),
     };
   }
 
@@ -1281,11 +1313,13 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
     String? articleId,
     String? content,
     DateTime? createdAt,
+    String? tags,
   }) => DbArticleNote(
     id: id ?? this.id,
     articleId: articleId ?? this.articleId,
     content: content ?? this.content,
     createdAt: createdAt ?? this.createdAt,
+    tags: tags ?? this.tags,
   );
   DbArticleNote copyWithCompanion(ArticleNotesCompanion data) {
     return DbArticleNote(
@@ -1293,6 +1327,7 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
       articleId: data.articleId.present ? data.articleId.value : this.articleId,
       content: data.content.present ? data.content.value : this.content,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      tags: data.tags.present ? data.tags.value : this.tags,
     );
   }
 
@@ -1302,13 +1337,14 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
           ..write('id: $id, ')
           ..write('articleId: $articleId, ')
           ..write('content: $content, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('tags: $tags')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, articleId, content, createdAt);
+  int get hashCode => Object.hash(id, articleId, content, createdAt, tags);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1316,7 +1352,8 @@ class DbArticleNote extends DataClass implements Insertable<DbArticleNote> {
           other.id == this.id &&
           other.articleId == this.articleId &&
           other.content == this.content &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.tags == this.tags);
 }
 
 class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
@@ -1324,12 +1361,14 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
   final Value<String> articleId;
   final Value<String> content;
   final Value<DateTime> createdAt;
+  final Value<String> tags;
   final Value<int> rowid;
   const ArticleNotesCompanion({
     this.id = const Value.absent(),
     this.articleId = const Value.absent(),
     this.content = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.tags = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ArticleNotesCompanion.insert({
@@ -1337,6 +1376,7 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
     required String articleId,
     required String content,
     required DateTime createdAt,
+    this.tags = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        articleId = Value(articleId),
@@ -1347,6 +1387,7 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
     Expression<String>? articleId,
     Expression<String>? content,
     Expression<DateTime>? createdAt,
+    Expression<String>? tags,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1354,6 +1395,7 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
       if (articleId != null) 'article_id': articleId,
       if (content != null) 'content': content,
       if (createdAt != null) 'created_at': createdAt,
+      if (tags != null) 'tags': tags,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1363,6 +1405,7 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
     Value<String>? articleId,
     Value<String>? content,
     Value<DateTime>? createdAt,
+    Value<String>? tags,
     Value<int>? rowid,
   }) {
     return ArticleNotesCompanion(
@@ -1370,6 +1413,7 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
       articleId: articleId ?? this.articleId,
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
+      tags: tags ?? this.tags,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1389,6 +1433,9 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (tags.present) {
+      map['tags'] = Variable<String>(tags.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1402,6 +1449,7 @@ class ArticleNotesCompanion extends UpdateCompanion<DbArticleNote> {
           ..write('articleId: $articleId, ')
           ..write('content: $content, ')
           ..write('createdAt: $createdAt, ')
+          ..write('tags: $tags, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2595,6 +2643,7 @@ typedef $$ArticleNotesTableCreateCompanionBuilder =
       required String articleId,
       required String content,
       required DateTime createdAt,
+      Value<String> tags,
       Value<int> rowid,
     });
 typedef $$ArticleNotesTableUpdateCompanionBuilder =
@@ -2603,6 +2652,7 @@ typedef $$ArticleNotesTableUpdateCompanionBuilder =
       Value<String> articleId,
       Value<String> content,
       Value<DateTime> createdAt,
+      Value<String> tags,
       Value<int> rowid,
     });
 
@@ -2654,6 +2704,11 @@ class $$ArticleNotesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ArticlesTableFilterComposer get articleId {
     final $$ArticlesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -2702,6 +2757,11 @@ class $$ArticleNotesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tags => $composableBuilder(
+    column: $table.tags,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ArticlesTableOrderingComposer get articleId {
     final $$ArticlesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2743,6 +2803,9 @@ class $$ArticleNotesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get tags =>
+      $composableBuilder(column: $table.tags, builder: (column) => column);
 
   $$ArticlesTableAnnotationComposer get articleId {
     final $$ArticlesTableAnnotationComposer composer = $composerBuilder(
@@ -2800,12 +2863,14 @@ class $$ArticleNotesTableTableManager
                 Value<String> articleId = const Value.absent(),
                 Value<String> content = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String> tags = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ArticleNotesCompanion(
                 id: id,
                 articleId: articleId,
                 content: content,
                 createdAt: createdAt,
+                tags: tags,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2814,12 +2879,14 @@ class $$ArticleNotesTableTableManager
                 required String articleId,
                 required String content,
                 required DateTime createdAt,
+                Value<String> tags = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ArticleNotesCompanion.insert(
                 id: id,
                 articleId: articleId,
                 content: content,
                 createdAt: createdAt,
+                tags: tags,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

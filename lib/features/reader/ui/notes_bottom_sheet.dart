@@ -7,8 +7,10 @@ import '../../../models/highlight.dart';
 import '../../shared/ui/plain_text_note_dialog.dart';
 import '../services/article_note_service.dart';
 import '../services/highlight_service.dart';
+import '../../library/providers/library_providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class NotesBottomSheet extends StatefulWidget {
+class NotesBottomSheet extends ConsumerStatefulWidget {
   final ArticleNoteService noteService;
   final HighlightService highlightService;
   final WebViewController? webViewController;
@@ -21,10 +23,11 @@ class NotesBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<NotesBottomSheet> createState() => _NotesBottomSheetState();
+  // 2. WICHTIG: Das 'State' muss hier zu 'ConsumerState' werden!
+  ConsumerState<NotesBottomSheet> createState() => _NotesBottomSheetState();
 }
 
-class _NotesBottomSheetState extends State<NotesBottomSheet> {
+class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
   List<ArticleNote> _articleNotes = [];
   List<Highlight> _highlights = [];
   bool _isLoading = true;
@@ -33,6 +36,17 @@ class _NotesBottomSheetState extends State<NotesBottomSheet> {
   void initState() {
     super.initState();
     _loadAllNotes();
+  }
+
+  Set<String> _getLocalTags() {
+    final Set<String> localTags = {};
+    for (var note in _articleNotes) {
+      localTags.addAll(note.tags);
+    }
+    for (var h in _highlights) {
+      localTags.addAll(h.tags);
+    }
+    return localTags;
   }
 
   Future<void> _loadAllNotes() async {
@@ -180,33 +194,50 @@ class _NotesBottomSheetState extends State<NotesBottomSheet> {
   }
 
   Future<void> _addArticleNote() async {
-    final result = await showDialog<String>(
+    final dbTags = await ref.read(allTagsProvider.future);
+    final localTags = _getLocalTags();
+    final combinedTags = {...dbTags, ...localTags}.toList();
+
+    final result = await showDialog<(String, List<String>)>(
       context: context,
-      builder: (context) => const PlainTextNoteDialog(title: "Neue Notiz"),
+      builder: (context) =>
+          PlainTextNoteDialog(title: "Neue Notiz", availableTags: combinedTags),
     );
 
-    if (result != null && result.trim().isNotEmpty) {
-      await widget.noteService.addNote(result);
+    if (result != null && result.$1.trim().isNotEmpty) {
+      await widget.noteService.addNote(result.$1, tags: result.$2);
+      ref.invalidate(allTagsProvider);
       await _loadAllNotes();
     }
   }
 
   Future<void> _editArticleNote(ArticleNote note) async {
-    final result = await showDialog<String>(
+    final dbTags = await ref.read(allTagsProvider.future);
+    final localTags = _getLocalTags();
+    final combinedTags = {...dbTags, ...localTags}.toList();
+
+    final result = await showDialog<(String, List<String>)>(
       context: context,
       builder: (context) => PlainTextNoteDialog(
         title: "Notiz bearbeiten",
         initialText: note.content,
-        showDeleteButton: true, // <--- NEU
+        initialTags: note.tags,
+        availableTags: combinedTags,
+        showDeleteButton: true,
       ),
     );
 
     if (result != null) {
-      if (result.trim().isEmpty) {
+      if (result.$1.trim().isEmpty) {
         await widget.noteService.deleteNote(note.id);
       } else {
-        await widget.noteService.updateNote(note.id, result);
+        await widget.noteService.updateNote(
+          note.id,
+          result.$1,
+          tags: result.$2,
+        );
       }
+      ref.invalidate(allTagsProvider);
       await _loadAllNotes();
     }
   }
@@ -214,34 +245,40 @@ class _NotesBottomSheetState extends State<NotesBottomSheet> {
   Future<void> _editHighlightNote(Highlight highlight) async {
     final hasNote = highlight.note != null && highlight.note!.trim().isNotEmpty;
 
-    final result = await showDialog<String>(
+    final dbTags = await ref.read(allTagsProvider.future);
+    final localTags = _getLocalTags();
+    final combinedTags = {...dbTags, ...localTags}.toList();
+
+    final result = await showDialog<(String, List<String>)>(
       context: context,
       builder: (context) => PlainTextNoteDialog(
         title: hasNote ? "Highlight Notiz bearbeiten" : "Notiz hinzufügen",
         initialText: highlight.note ?? '',
-        showDeleteButton:
-            hasNote, // <--- NEU: Nur zeigen, wenn schon Text existiert
+        initialTags: highlight.tags,
+        availableTags: combinedTags,
+        showDeleteButton: hasNote,
       ),
     );
 
     if (result != null) {
-      final trimmed = result.trim();
-      final isNotEmpty = trimmed.isNotEmpty;
+      final newText = result.$1.trim();
+      final newTags = result.$2;
+      final isNotEmpty = newText.isNotEmpty;
 
-      // Update in der JSON
       await widget.highlightService.updateHighlight(
         highlight.id,
-        newNote: isNotEmpty ? trimmed : null,
+        newNote: isNotEmpty ? newText : null,
         clearNote: !isNotEmpty,
+        newTags: newTags,
       );
 
-      // Live-Update im Hintergrund-WebView
-      final jsNote = isNotEmpty ? jsonEncode(trimmed) : 'null';
+      final jsNote = isNotEmpty ? jsonEncode(newText) : 'null';
+      final jsTags = jsonEncode(newTags);
       widget.webViewController?.runJavaScript(
-        "window.cleanReadEngine.updateNoteIcon('${highlight.id}', $jsNote);",
+        "window.cleanReadEngine.updateNoteIcon('${highlight.id}', $jsNote, $jsTags);",
       );
 
-      // UI aktualisieren (Liste neu aufbauen)
+      ref.invalidate(allTagsProvider);
       await _loadAllNotes();
     }
   }
@@ -340,6 +377,35 @@ class _NotesBottomSheetState extends State<NotesBottomSheet> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey.shade800),
               ),
+              if (note.tags.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                  child: Wrap(
+                    spacing: 6.0,
+                    runSpacing: 4.0,
+                    children: note.tags
+                        .map(
+                          (tag) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '#$tag',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
               const SizedBox(height: 4),
               Text(
                 dateStr,
@@ -380,14 +446,18 @@ class _NotesBottomSheetState extends State<NotesBottomSheet> {
 
       for (var h in _highlights) {
         final cleanText = h.text.replaceAll('\n', ' ').trim();
-        final hasNote = h.note != null && h.note!.trim().isNotEmpty;
 
-        // Transparenz (Alpha) für den Highlight-Background auf ca. 40% setzen, damit Text gut lesbar bleibt
+        // --- NEU: Logik für Content-Check ---
+        final hasNoteText = h.note != null && h.note!.trim().isNotEmpty;
+        final hasTags = h.tags.isNotEmpty;
+        final hasContent =
+            hasNoteText ||
+            hasTags; // Gilt als ausgefüllt, wenn EINS davon da ist
+
         final highlightColor = _parseColor(h.color).withOpacity(0.4);
 
         items.add(
           ListTile(
-            // Der markierte Text mit realem Background
             title: Text(
               '"$cleanText"',
               maxLines: 2,
@@ -397,28 +467,63 @@ class _NotesBottomSheetState extends State<NotesBottomSheet> {
                 color: Colors.black87,
                 backgroundColor: highlightColor,
                 fontSize: 13,
-                height: 1.4, // Etwas mehr Zeilenabstand für den Marker-Effekt
+                height: 1.4,
               ),
             ),
 
-            // Subtitle erscheint nur, wenn es eine Notiz gibt
-            subtitle: hasNote
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 6.0),
-                    child: Text(
-                      h.note!,
-                      style: TextStyle(color: Colors.grey.shade900),
-                    ),
+            // --- NEU: Notiz UND Tags rendern ---
+            subtitle: hasContent
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (hasNoteText)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6.0),
+                          child: Text(
+                            h.note!,
+                            style: TextStyle(color: Colors.grey.shade900),
+                          ),
+                        ),
+                      if (hasTags)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Wrap(
+                            spacing: 6.0,
+                            runSpacing: 4.0,
+                            children: h.tags
+                                .map(
+                                  (tag) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '#$tag',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ),
+                    ],
                   )
                 : null,
 
             onTap: () => _jumpToHighlight(h.id),
             onLongPress: () => _editHighlightNote(h),
 
-            // Dynamisches Icon basierend auf Notiz-Status
+            // --- GEÄNDERT: Reagiert jetzt auf hasContent statt nur hasNoteText ---
             trailing: IconButton(
               icon: Icon(
-                hasNote ? Icons.edit_outlined : Icons.add_comment_outlined,
+                hasContent ? Icons.edit_outlined : Icons.add_comment_outlined,
                 size: 20,
                 color: Colors.grey,
               ),

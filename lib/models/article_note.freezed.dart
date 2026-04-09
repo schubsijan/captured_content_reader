@@ -24,6 +24,7 @@ mixin _$ArticleNote {
   String get id => throw _privateConstructorUsedError;
   String get content => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
+  List<String> get tags => throw _privateConstructorUsedError;
 
   /// Serializes this ArticleNote to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -42,7 +43,7 @@ abstract class $ArticleNoteCopyWith<$Res> {
     $Res Function(ArticleNote) then,
   ) = _$ArticleNoteCopyWithImpl<$Res, ArticleNote>;
   @useResult
-  $Res call({String id, String content, DateTime createdAt});
+  $Res call({String id, String content, DateTime createdAt, List<String> tags});
 }
 
 /// @nodoc
@@ -63,6 +64,7 @@ class _$ArticleNoteCopyWithImpl<$Res, $Val extends ArticleNote>
     Object? id = null,
     Object? content = null,
     Object? createdAt = null,
+    Object? tags = null,
   }) {
     return _then(
       _value.copyWith(
@@ -78,6 +80,10 @@ class _$ArticleNoteCopyWithImpl<$Res, $Val extends ArticleNote>
                 ? _value.createdAt
                 : createdAt // ignore: cast_nullable_to_non_nullable
                       as DateTime,
+            tags: null == tags
+                ? _value.tags
+                : tags // ignore: cast_nullable_to_non_nullable
+                      as List<String>,
           )
           as $Val,
     );
@@ -93,7 +99,7 @@ abstract class _$$ArticleNoteImplCopyWith<$Res>
   ) = __$$ArticleNoteImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call({String id, String content, DateTime createdAt});
+  $Res call({String id, String content, DateTime createdAt, List<String> tags});
 }
 
 /// @nodoc
@@ -113,6 +119,7 @@ class __$$ArticleNoteImplCopyWithImpl<$Res>
     Object? id = null,
     Object? content = null,
     Object? createdAt = null,
+    Object? tags = null,
   }) {
     return _then(
       _$ArticleNoteImpl(
@@ -128,6 +135,10 @@ class __$$ArticleNoteImplCopyWithImpl<$Res>
             ? _value.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
                   as DateTime,
+        tags: null == tags
+            ? _value._tags
+            : tags // ignore: cast_nullable_to_non_nullable
+                  as List<String>,
       ),
     );
   }
@@ -140,7 +151,8 @@ class _$ArticleNoteImpl implements _ArticleNote {
     required this.id,
     required this.content,
     required this.createdAt,
-  });
+    final List<String> tags = const [],
+  }) : _tags = tags;
 
   factory _$ArticleNoteImpl.fromJson(Map<String, dynamic> json) =>
       _$$ArticleNoteImplFromJson(json);
@@ -151,10 +163,18 @@ class _$ArticleNoteImpl implements _ArticleNote {
   final String content;
   @override
   final DateTime createdAt;
+  final List<String> _tags;
+  @override
+  @JsonKey()
+  List<String> get tags {
+    if (_tags is EqualUnmodifiableListView) return _tags;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_tags);
+  }
 
   @override
   String toString() {
-    return 'ArticleNote(id: $id, content: $content, createdAt: $createdAt)';
+    return 'ArticleNote(id: $id, content: $content, createdAt: $createdAt, tags: $tags)';
   }
 
   @override
@@ -165,12 +185,19 @@ class _$ArticleNoteImpl implements _ArticleNote {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.content, content) || other.content == content) &&
             (identical(other.createdAt, createdAt) ||
-                other.createdAt == createdAt));
+                other.createdAt == createdAt) &&
+            const DeepCollectionEquality().equals(other._tags, _tags));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, id, content, createdAt);
+  int get hashCode => Object.hash(
+    runtimeType,
+    id,
+    content,
+    createdAt,
+    const DeepCollectionEquality().hash(_tags),
+  );
 
   /// Create a copy of ArticleNote
   /// with the given fields replaced by the non-null parameter values.
@@ -191,6 +218,7 @@ abstract class _ArticleNote implements ArticleNote {
     required final String id,
     required final String content,
     required final DateTime createdAt,
+    final List<String> tags,
   }) = _$ArticleNoteImpl;
 
   factory _ArticleNote.fromJson(Map<String, dynamic> json) =
@@ -202,6 +230,8 @@ abstract class _ArticleNote implements ArticleNote {
   String get content;
   @override
   DateTime get createdAt;
+  @override
+  List<String> get tags;
 
   /// Create a copy of ArticleNote
   /// with the given fields replaced by the non-null parameter values.

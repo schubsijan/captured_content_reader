@@ -50,3 +50,8 @@ final librarySyncServiceProvider = Provider<LibrarySyncService>((ref) {
   final storage = ref.watch(storageServiceProvider);
   return LibrarySyncService(storage, db);
 });
+
+final allTagsProvider = FutureProvider<List<String>>((ref) async {
+  final db = ref.watch(databaseProvider);
+  return db.getAllTags(); // Führt "SELECT DISTINCT name FROM tagIndex" aus
+});

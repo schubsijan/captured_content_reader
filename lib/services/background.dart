@@ -78,7 +78,9 @@ void onStart(ServiceInstance service) async {
     android: initializationSettingsAndroid,
   );
 
-  await localNav.initialize(initializationSettings);
+  await localNav.initialize(
+    settings: initializationSettings, // <--- "settings:" wichtig
+  );
 
   final storageService = StorageService();
 
@@ -88,10 +90,10 @@ void onStart(ServiceInstance service) async {
 
     // "Warte..." Notification auf dem STATUS Channel (Low Prio)
     await localNav.show(
-      notificationId,
-      'Warte auf Download...',
-      'Suche nach: $fileName',
-      const NotificationDetails(
+      id: notificationId,
+      title: 'Warte auf Download...',
+      body: 'Suche nach: $fileName',
+      notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           statusChannelId, // <--- Ruhiger Channel
           'Import Status',
@@ -131,10 +133,10 @@ Future<void> _pollFile(
       timer.cancel();
       // Fehler auch auf dem Success Channel (damit man es mitbekommt)
       await localNav.show(
-        notificationId,
-        'Fehler',
-        'Zeitüberschreitung beim Download.',
-        const NotificationDetails(
+        id: notificationId,
+        title: 'Fehler',
+        body: 'Zeitüberschreitung beim Download.',
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             successChannelId,
             'Import Erfolg',
@@ -178,10 +180,10 @@ Future<void> _processImport(
 
     // 3. Notification (bleibt wie vorher, nur sauberer)
     await localNav.show(
-      successNotificationId,
-      'Import erfolgreich!',
-      'Tippe zum Öffnen.',
-      NotificationDetails(
+      id: successNotificationId,
+      title: 'Import erfolgreich!',
+      body: 'Tippe zum Öffnen.',
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           successChannelId,
           'Import Erfolg',
@@ -202,3 +204,4 @@ Future<void> _processImport(
     service.stopSelf();
   }
 }
+

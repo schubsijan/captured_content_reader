@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.3+3
+version: 1.0.4+4
 
 environment:
   sdk: ^3.10.1
@@ -45,17 +45,17 @@ dependencies:
 
   # Background & Notifications (Das Herzstück)
   flutter_background_service: ^5.0.0
-  flutter_local_notifications: ^19.5.0
+  flutter_local_notifications: ^21.0.0
 
   # Data & Indexing
   drift: ^2.14.0
-  sqlite3_flutter_libs: ^0.5.18
+  sqlite3_flutter_libs: ^0.6.0+eol
   # HTML Parsing (für Metadaten Extraktion)
   html: ^0.15.6
 
   # Architecture
-  flutter_riverpod: ^2.4.9
-  freezed_annotation: ^2.4.1
+  flutter_riverpod: ^2.5.1
+  freezed_annotation: ^3.1.0
   json_annotation: ^4.8.1
   uuid: ^4.5.2
   intl: ^0.20.2
@@ -78,7 +78,7 @@ dev_dependencies:
   # für DB-Logik
   build_runner: ^2.4.7
   drift_dev: ^2.14.0
-  freezed: ^2.4.6
+  freezed: ^3.2.5
   json_serializable: ^6.7.1
 
   # für icons

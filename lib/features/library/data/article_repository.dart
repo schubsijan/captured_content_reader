@@ -95,6 +95,39 @@ class ArticleRepository {
     await (_db.delete(_db.articles)..where((t) => t.id.equals(articleId))).go();
   }
 
+  Future<void> updateArticleTags(String articleId, List<String> newTags) async {
+    final appDir = await _storage.getAppDirectory();
+    final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+
+    if (!await metaFile.exists()) return;
+
+    try {
+      // 1. JSON laden
+      final content = await metaFile.readAsString();
+      final meta = ArticleMeta.fromJson(jsonDecode(content));
+
+      // 2. Objekt mit neuen Tags kopieren
+      final updatedMeta = meta.copyWith(tags: newTags);
+
+      // 3. Atomar schreiben (File-First)
+      final tempFile = File('${metaFile.path}.tmp');
+      await tempFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(updatedMeta.toJson()),
+        flush: true,
+      );
+      await tempFile.rename(metaFile.path);
+
+      // 4. DB Index aktualisieren
+      // Wir nutzen indexArticle, da es bereits die Logik besitzt,
+      // Tags aus meta, notes und highlights zu mergen.
+      final fileLastModified = DateTime.now();
+      await _db.indexArticle(updatedMeta, fileLastModified);
+    } catch (e) {
+      print("Error updating article tags: $e");
+      rethrow;
+    }
+  }
+
   /// Aktualisiert die Metadaten eines Artikels (Titel, Autoren, etc.)
   Future<void> updateArticleMeta(String articleId, ArticleMeta newMeta) async {
     final appDir = await _storage.getAppDirectory();

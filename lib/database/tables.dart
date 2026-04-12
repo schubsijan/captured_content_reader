@@ -30,8 +30,10 @@ class TagIndex extends Table {
   TextColumn get articleId =>
       text().references(Articles, #id, onDelete: KeyAction.cascade)();
 
+  TextColumn get origin => text().withDefault(const Constant('article'))();
+
   @override
-  Set<Column> get primaryKey => {name, articleId};
+  Set<Column> get primaryKey => {name, articleId, origin}; // Origin in PK aufnehmen
 }
 
 // Index für Autoren

@@ -365,6 +365,8 @@ class CleanReadEngine {
     const newNodes = [];
     if (parts[0]) newNodes.push(document.createTextNode(parts[0]));
 
+    let lastClick = 0;
+
     newNodes.push(
       mark({
         class: this.highlightClass, // Keine Modifikation mehr hier
@@ -373,9 +375,20 @@ class CleanReadEngine {
         style: `background-color: ${color}80; color: inherit; padding: 0;`,
         onclick: (e) => {
           e.stopPropagation();
+
+          const now = Date.now();
+          const DIFF = now - lastClick;
+          lastClick = now;
+
           this.activeHighlightId.val = id;
           this.activeColor.val = e.target.getAttribute("data-color");
           this._updateHandles(id);
+
+          if (DIFF < 300) {
+            this._sendToFlutter('edit_note', { id: id });
+            // Reset, damit ein dritter Klick nicht sofort wieder triggert
+            lastClick = 0;
+          }
         }
       }, parts[1])
     );

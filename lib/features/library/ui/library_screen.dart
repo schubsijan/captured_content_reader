@@ -241,7 +241,7 @@ class ArticleListTile extends ConsumerWidget {
           },
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: Opacity(
               opacity: isUnreadView ? 1.0 : 0.6,
               child: ArticleMetaDisplay(

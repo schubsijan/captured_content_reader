@@ -15,8 +15,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../../database/app_database.dart';
 import '../../../models/article_meta.dart';
-import '../../../services/storage_access.dart'; // Dein StorageService
-import '../../library/providers/library_providers.dart'; // Zugriff auf DB/Repo
+import '../../../services/storage_access.dart';
+import '../../library/providers/library_providers.dart';
 import '../../../models/highlight.dart';
 import '../services/highlight_service.dart';
 
@@ -34,7 +34,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   WebViewController? _controller;
   bool _isLoadingFile = true;
   late HighlightService _highlightService;
-
   late ArticleNoteService _noteService;
 
   bool _uiVisible = true;
@@ -59,9 +58,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     await _prepareWebView();
   }
 
-  /// Bereitet den Controller vor und sucht den Pfad zur HTML-Datei
   Future<void> _prepareWebView() async {
-    // 1. Pfad ermitteln (wie gehabt)
     final storage = StorageService();
     final appDir = await storage.getAppDirectory();
     final htmlFile = File(
@@ -77,11 +74,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       return;
     }
 
-    // 2. Controller instanziieren (OHNE Kaskaden für den Delegate)
     final controller = WebViewController();
 
-    // 3. Controller konfigurieren
-    // Jetzt ist 'controller' bereits deklariert und kann im Callback verwendet werden.
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
@@ -92,7 +86,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (String url) async {
-            // HIER ist der Zugriff jetzt erlaubt:
             await _injectHighlightScripts(controller);
             await _restoreHighlights(controller);
 
@@ -103,12 +96,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             }
           },
           onNavigationRequest: (NavigationRequest request) async {
-            // 1. Lokale Dateien (der Artikel selbst) erlauben
             if (request.url.startsWith('file://')) {
               return NavigationDecision.navigate;
             }
 
-            // 2. Externe Links (http/https) abfangen und im externen Browser öffnen
             if (request.url.startsWith('http://') ||
                 request.url.startsWith('https://')) {
               final uri = Uri.parse(request.url);
@@ -121,11 +112,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   );
                 }
               }
-              // Navigation im WebView verhindern, damit der Artikel geöffnet bleibt
               return NavigationDecision.prevent;
             }
-
-            // 3. Alle anderen Schemata (mailto, tel, etc.) vorerst blockieren
             return NavigationDecision.prevent;
           },
         ),
@@ -139,7 +127,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     }
   }
 
-  /// Lädt die JS-Dateien aus den Assets und führt sie aus
   Future<void> _injectHighlightScripts(WebViewController controller) async {
     try {
       final vanJs = await rootBundle.loadString(
@@ -154,18 +141,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       await controller.runJavaScript(appJs);
       await controller.runJavaScript(scrollJs);
 
-      // --- NEU: Zotero-Icon per CSS Inject ---
-      // Wir zeichnen das Icon als sicheres SVG direkt in CSS,
-      // so ist es extrem schnell und unabhängig von Schriftarten/Emojis.
       await controller.runJavaScript("""
         const style = document.createElement('style');
         style.innerHTML = `
+          .cr-highlight {
+            touch-action: manipulation;
+            /* Verhindert den 300ms Delay bei manchen Browsern und das automatische Zoomen */
+          }
           .cr-highlight.has-note::before {
             content: '';
             display: inline-block;
             width: 14px;
             height: 16px;
-            /* Zotero-Style SVG als Background */
             background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='16' viewBox='0 0 14 16'%3E%3Cpath d='M0.5,0.5 H9.5 L13.5,4.5 V15.5 H0.5 Z' fill='%23FFD54F' stroke='%23D4A719' stroke-width='1'/%3E%3Cpath d='M9.5,0.5 V4.5 H13.5' fill='%23FFE57F' stroke='%23D4A719' stroke-width='1'/%3E%3C/svg%3E");
             background-size: contain;
             background-repeat: no-repeat;
@@ -179,57 +166,35 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         document.head.appendChild(style);
       """);
 
-      // --- 3. DYNAMISCHE HÖHENBERECHNUNG ---
-      // Wir holen uns die RenderBox des Headers
       final RenderBox? renderBox =
           _headerKey.currentContext?.findRenderObject() as RenderBox?;
+      double headerHeight = (renderBox != null && renderBox.hasSize)
+          ? renderBox.size.height
+          : MediaQuery.of(context).padding.top + kToolbarHeight + 100;
 
-      double headerHeight = 0;
-
-      if (renderBox != null && renderBox.hasSize) {
-        headerHeight = renderBox.size.height;
-      } else {
-        // Fallback, falls UI noch nicht fertig gerendert wurde (sollte selten passieren)
-        // Statusbar + AppBar Standardhöhe
-        headerHeight = MediaQuery.of(context).padding.top + kToolbarHeight + 60;
-      }
-
-      // Wir addieren noch z.B. 20px "Luft", damit es nicht klebt
-      final double finalPadding = headerHeight;
-
-      // viewPadding.bottom gibt uns die Höhe der System-Gesten-Leiste / Buttons
       final double navBarHeight = MediaQuery.of(context).viewPadding.bottom;
-      // Wir geben noch 30px extra dazu, damit der Text nicht am Rand klebt
       final double bottomPadding = navBarHeight + 30;
 
-      // --- CSS INJECTION ---
-      // Wir setzen beides in einem Rutsch
       await controller.runJavaScript("""
-        document.body.style.paddingTop = '${finalPadding}px';
+        document.body.style.paddingTop = '${headerHeight}px';
         document.body.style.paddingBottom = '${bottomPadding}px';
       """);
-
-      print("JS Engine injected.");
     } catch (e) {
       print("JS Injection Error: $e");
     }
   }
 
-  /// Liest JSON vom File und sendet es an JS
   Future<void> _restoreHighlights(WebViewController controller) async {
     final highlights = await _highlightService.loadHighlights();
     if (highlights.isNotEmpty) {
       final jsonString = jsonEncode(highlights.map((h) => h.toJson()).toList());
-      // Escaping für JS String Injection
       final sanitizedJson = jsonEncode(jsonString);
-      // Aufruf deiner JS Funktion: window.cleanReadEngine.restoreHighlights(...)
       await controller.runJavaScript(
         'window.cleanReadEngine.restoreHighlights(JSON.parse($sanitizedJson));',
       );
     }
   }
 
-  /// Empfängt Nachrichten von cleanReadEngine._sendToFlutter
   void _handleJsMessage(JavaScriptMessage message) async {
     try {
       final Map<String, dynamic> payload = jsonDecode(message.message);
@@ -252,21 +217,17 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           final highlight = Highlight.fromJson(data);
           await _highlightService.addHighlight(highlight);
           break;
-        case 'update': // Für Farbänderungen aus dem JS
+        case 'update':
           final id = data['id'];
           final color = data['color'];
           await _highlightService.updateHighlight(id, newColor: color);
           break;
-
-        case 'edit_note': // Für Notizänderungen aus dem JS-Menü
+        case 'edit_note':
           final id = data['id'];
-
           final highlights = await _highlightService.loadHighlights();
           final highlight = highlights.firstWhere((h) => h.id == id);
           final hasNote =
               highlight.note != null && highlight.note!.trim().isNotEmpty;
-
-          // Hol dir auch hier die globalen Tags für das Autocomplete
           final availableTags = await ref.read(allTagsProvider.future);
 
           if (mounted) {
@@ -277,8 +238,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                     ? 'Highlight Notiz bearbeiten'
                     : 'Notiz hinzufügen',
                 initialText: highlight.note ?? '',
-                initialTags: highlight.tags, // <--- Die alten Tags reinreichen
-                availableTags: availableTags, // <--- Autocomplete füttern
+                initialTags: highlight.tags,
+                availableTags: availableTags,
                 showDeleteButton: hasNote,
               ),
             );
@@ -288,36 +249,25 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               final newTags = result.$2;
               final isNotEmpty = newText.isNotEmpty;
 
-              // 1. JSON/Datenbank updaten
               await _highlightService.updateHighlight(
                 id,
                 newNote: isNotEmpty ? newText : null,
                 clearNote: !isNotEmpty,
-                newTags: newTags, // <--- Tags mitspeichern
+                newTags: newTags,
               );
 
-              // 2. LIVE UPDATE IM BROWSER
               final jsNote = isNotEmpty ? jsonEncode(newText) : 'null';
-              final jsTags = jsonEncode(
-                newTags,
-              ); // Wird sicher zu ["tag1", "tag2"]
-
-              // --- HIER WAR DER FEHLER: $jsTags muss als 3. Parameter übergeben werden ---
+              final jsTags = jsonEncode(newTags);
               await _controller?.runJavaScript(
                 "window.cleanReadEngine.updateNoteIcon('$id', $jsNote, $jsTags);",
               );
-
-              // 3. Globale Tag-Liste aktualisieren, falls ein neues Tag erfunden wurde
               ref.invalidate(allTagsProvider);
             }
           }
           break;
         case 'delete':
-          final id = data['id'];
-          await _highlightService.deleteHighlight(id);
+          await _highlightService.deleteHighlight(data['id']);
           break;
-        default:
-          print("Unknown action: $action");
       }
     } catch (e) {
       print("Error handling JS message: $e");
@@ -330,38 +280,23 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      // Wir dehnen den Body bis ganz nach oben aus (hinter die Statusbar)
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          // --- EBENE 1: WebView (Vollbild) ---
-          // Nutzt den ganzen Platz, auch hinter der Statusbar
           Positioned.fill(
             child: _controller == null
-                ? const SizedBox() // Leerer Platzhalter solange Controller init
+                ? const SizedBox()
                 : AnimatedOpacity(
-                    // Wenn wir noch laden (oder Scripts injizieren), ist Opacity 0.
-                    // Sobald _isLoadingFile false wird, faden wir auf 1.0.
                     opacity: _isLoadingFile ? 0.0 : 1.0,
-                    duration: const Duration(
-                      milliseconds: 400,
-                    ), // Sanfte Einblendung
+                    duration: const Duration(milliseconds: 400),
                     curve: Curves.easeOut,
                     child: WebViewWidget(controller: _controller!),
                   ),
           ),
-
-          // Lade-Indikator, solange der "Vorhang" noch zu ist
           if (_isLoadingFile) const Center(child: CircularProgressIndicator()),
-
-          // --- EBENE 2: Animierter Header (Dynamische Höhe!) ---
-          // Align platziert das Kind standardmäßig oben mittig.
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedSlide(
-              // offset: Offset(x, y)
-              // y = 0.0 -> Normalposition (Sichtbar)
-              // y = -1.0 -> Verschiebung um 100% der eigenen Höhe nach oben (Unsichtbar)
               offset: _uiVisible ? Offset.zero : const Offset(0, -1),
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
@@ -373,8 +308,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     );
   }
 
-  // Der Header baut sich jetzt so groß wie er Inhalt hat.
-  // Wir müssen nur sicherstellen, dass er die Statusbar berücksichtigt.
   Widget _buildFloatingHeader(
     BuildContext context,
     AsyncValue<Article?> articleStream,
@@ -383,7 +316,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
     return Container(
       key: _headerKey,
-      padding: EdgeInsets.only(top: topPadding, bottom: 10),
+      padding: EdgeInsets.only(top: topPadding, bottom: 0),
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.96),
@@ -399,7 +332,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 1. Fake AppBar Zeile (Titel + Zurück + Menü)
+          // ZEILE 1: Zurück, Titel, Hauptmenü
           Row(
             children: [
               IconButton(
@@ -421,7 +354,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   error: (_, __) => const SizedBox(),
                 ),
               ),
-              // Hier nur noch das Menü (Browser Icon ist weg)
               articleStream.maybeWhen(
                 data: (article) => article != null
                     ? _buildOptionsMenu(context, article)
@@ -431,83 +363,62 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             ],
           ),
 
-          // 2. Meta Informationen + Browser Icon (NEU ANGEORDNET)
           articleStream.when(
             data: (article) {
               if (article == null) return const SizedBox();
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment
-                      .start, // Oben bündig (bei Webseite/Datum)
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Meta-Daten nehmen den meisten Platz ein
-                    Expanded(
-                      child: ArticleMetaDisplay(
-                        article: article,
-                        compact: true,
-                      ),
-                    ),
-
-                    // Das Browser Icon rechts daneben
-                    if (article.url.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      // Wir nutzen ein kleineres Icon-Widget, damit es nicht zu viel Platz wegnimmt
-                      InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () async {
-                          final uri = Uri.parse(article.url);
-                          try {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Fehler: $e")),
+                    // BLOCK OBEN: (SiteName & Autor) | Icons
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Links: Stack aus SiteName und Autor
+                        Expanded(
+                          child: ArticleMetaDisplay(
+                            article: article,
+                            compact: true,
+                            showTopRow: true,
+                            showAuthors: true,
+                            showTags: false, // Hier noch keine Tags
+                          ),
+                        ),
+                        // Rechts: Die Icons untereinander
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildHeaderIcon(Icons.public, () async {
+                              final uri = Uri.parse(article.url);
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
                               );
-                            }
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Icon(
-                            Icons.public,
-                            size: 20,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withOpacity(0.6),
-                          ),
+                            }),
+                            _buildHeaderIcon(Icons.description_outlined, () {
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => NotesBottomSheet(
+                                  noteService: _noteService,
+                                  highlightService: _highlightService,
+                                  webViewController: _controller,
+                                ),
+                              );
+                            }),
+                          ],
                         ),
-                      ),
-                    ],
-
-                    const SizedBox(width: 4),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () {
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (context) => NotesBottomSheet(
-                            noteService: _noteService,
-                            highlightService: _highlightService, // NEU
-                            webViewController: _controller, // NEU
-                          ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Icon(
-                          Icons.description_outlined,
-                          size: 20,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.primary.withOpacity(0.8),
-                        ),
-                      ),
+                      ],
+                    ),
+                    // BLOCK UNTEN: Tags über volle Breite
+                    ArticleMetaDisplay(
+                      article: article,
+                      compact: true,
+                      showTopRow: false,
+                      showAuthors: false,
+                      showTags: true, // Hier NUR die Tags
                     ),
                   ],
                 ),
@@ -521,36 +432,42 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     );
   }
 
+  Widget _buildHeaderIcon(IconData icon, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Icon(
+          icon,
+          size: 20,
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+        ),
+      ),
+    );
+  }
+
   Widget _buildOptionsMenu(BuildContext context, Article article) {
     final isRead = article.isRead;
-
     return PopupMenuButton<String>(
       onSelected: (value) async {
         if (value == 'toggleRead') {
           ArticleActions.toggleReadStatus(context, ref, article);
         } else if (value == 'editMeta') {
-          List<String> authors = [];
-          try {
-            authors = List<String>.from(jsonDecode(article.authors));
-          } catch (_) {}
-
-          final meta = ArticleMeta(
-            uuid: article.id,
-            url: article.url,
-            title: article.title,
-            siteName: article.siteName,
-            publishedAt: article.publishedAt,
-            savedAt: article.savedAt,
-            isRead: article.isRead,
-            progress: article.progress,
-            authors: authors,
-            tags: [],
+          final appDir = await StorageService().getAppDirectory();
+          final metaFile = File(p.join(appDir.path, article.id, 'meta.json'));
+          ArticleMeta fullMeta = ArticleMeta.fromJson(
+            jsonDecode(await metaFile.readAsString()),
           );
-
-          await _openEditDialog(context, article, meta);
+          if (context.mounted) {
+            await showDialog(
+              context: context,
+              builder: (context) =>
+                  EditMetaDialog(article: article, meta: fullMeta),
+            );
+          }
         } else if (value == 'delete') {
-          final confirm = await ArticleActions.confirmDelete(context);
-          if (confirm && context.mounted) {
+          if (await ArticleActions.confirmDelete(context) && context.mounted) {
             await ArticleActions.executeDelete(
               context,
               ref,
@@ -560,8 +477,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           }
         }
       },
-      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(
+      itemBuilder: (context) => [
+        PopupMenuItem(
           value: 'toggleRead',
           child: Row(
             children: [
@@ -576,7 +493,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             ],
           ),
         ),
-        PopupMenuItem<String>(
+        PopupMenuItem(
           value: 'editMeta',
           child: Row(
             children: [
@@ -587,7 +504,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           ),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem<String>(
+        PopupMenuItem(
           value: 'delete',
           child: Row(
             children: [
@@ -599,40 +516,5 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         ),
       ],
     );
-  }
-
-  Future<void> _openEditDialog(
-    BuildContext context,
-    Article article,
-    ArticleMeta partialMeta,
-  ) async {
-    // Um Datenverlust bei Tags zu vermeiden (die nicht in der Article-DB Tabelle stehen, sondern in TagIndex),
-    // lesen wir am besten kurz die echte meta.json Datei ein, bevor wir editieren.
-
-    // Kleiner Hack: Wir nutzen StorageService direkt oder indirekt.
-    // Sauberer wäre eine Methode im Repository: getMeta(id).
-    // Aber wir können es hier pragmatisch lösen, indem wir im Dialog (EditMetaDialog)
-    // im initState die Datei laden oder wir machen es hier:
-
-    final appDir = await StorageService().getAppDirectory();
-    final metaFile = File(p.join(appDir.path, article.id, 'meta.json'));
-
-    ArticleMeta fullMeta = partialMeta;
-
-    if (await metaFile.exists()) {
-      try {
-        final content = await metaFile.readAsString();
-        fullMeta = ArticleMeta.fromJson(jsonDecode(content));
-      } catch (e) {
-        print("Error reading meta for edit: $e");
-      }
-    }
-
-    if (context.mounted) {
-      await showDialog(
-        context: context,
-        builder: (context) => EditMetaDialog(article: article, meta: fullMeta),
-      );
-    }
   }
 }

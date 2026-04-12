@@ -693,8 +693,18 @@ class $TagIndexTable extends TagIndex
       'REFERENCES articles (id) ON DELETE CASCADE',
     ),
   );
+  static const VerificationMeta _originMeta = const VerificationMeta('origin');
   @override
-  List<GeneratedColumn> get $columns => [name, articleId];
+  late final GeneratedColumn<String> origin = GeneratedColumn<String>(
+    'origin',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('article'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [name, articleId, origin];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -723,11 +733,17 @@ class $TagIndexTable extends TagIndex
     } else if (isInserting) {
       context.missing(_articleIdMeta);
     }
+    if (data.containsKey('origin')) {
+      context.handle(
+        _originMeta,
+        origin.isAcceptableOrUnknown(data['origin']!, _originMeta),
+      );
+    }
     return context;
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {name, articleId};
+  Set<GeneratedColumn> get $primaryKey => {name, articleId, origin};
   @override
   TagIndexData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -739,6 +755,10 @@ class $TagIndexTable extends TagIndex
       articleId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}article_id'],
+      )!,
+      origin: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin'],
       )!,
     );
   }
@@ -752,17 +772,27 @@ class $TagIndexTable extends TagIndex
 class TagIndexData extends DataClass implements Insertable<TagIndexData> {
   final String name;
   final String articleId;
-  const TagIndexData({required this.name, required this.articleId});
+  final String origin;
+  const TagIndexData({
+    required this.name,
+    required this.articleId,
+    required this.origin,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['name'] = Variable<String>(name);
     map['article_id'] = Variable<String>(articleId);
+    map['origin'] = Variable<String>(origin);
     return map;
   }
 
   TagIndexCompanion toCompanion(bool nullToAbsent) {
-    return TagIndexCompanion(name: Value(name), articleId: Value(articleId));
+    return TagIndexCompanion(
+      name: Value(name),
+      articleId: Value(articleId),
+      origin: Value(origin),
+    );
   }
 
   factory TagIndexData.fromJson(
@@ -773,6 +803,7 @@ class TagIndexData extends DataClass implements Insertable<TagIndexData> {
     return TagIndexData(
       name: serializer.fromJson<String>(json['name']),
       articleId: serializer.fromJson<String>(json['articleId']),
+      origin: serializer.fromJson<String>(json['origin']),
     );
   }
   @override
@@ -781,17 +812,21 @@ class TagIndexData extends DataClass implements Insertable<TagIndexData> {
     return <String, dynamic>{
       'name': serializer.toJson<String>(name),
       'articleId': serializer.toJson<String>(articleId),
+      'origin': serializer.toJson<String>(origin),
     };
   }
 
-  TagIndexData copyWith({String? name, String? articleId}) => TagIndexData(
-    name: name ?? this.name,
-    articleId: articleId ?? this.articleId,
-  );
+  TagIndexData copyWith({String? name, String? articleId, String? origin}) =>
+      TagIndexData(
+        name: name ?? this.name,
+        articleId: articleId ?? this.articleId,
+        origin: origin ?? this.origin,
+      );
   TagIndexData copyWithCompanion(TagIndexCompanion data) {
     return TagIndexData(
       name: data.name.present ? data.name.value : this.name,
       articleId: data.articleId.present ? data.articleId.value : this.articleId,
+      origin: data.origin.present ? data.origin.value : this.origin,
     );
   }
 
@@ -799,44 +834,51 @@ class TagIndexData extends DataClass implements Insertable<TagIndexData> {
   String toString() {
     return (StringBuffer('TagIndexData(')
           ..write('name: $name, ')
-          ..write('articleId: $articleId')
+          ..write('articleId: $articleId, ')
+          ..write('origin: $origin')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(name, articleId);
+  int get hashCode => Object.hash(name, articleId, origin);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is TagIndexData &&
           other.name == this.name &&
-          other.articleId == this.articleId);
+          other.articleId == this.articleId &&
+          other.origin == this.origin);
 }
 
 class TagIndexCompanion extends UpdateCompanion<TagIndexData> {
   final Value<String> name;
   final Value<String> articleId;
+  final Value<String> origin;
   final Value<int> rowid;
   const TagIndexCompanion({
     this.name = const Value.absent(),
     this.articleId = const Value.absent(),
+    this.origin = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TagIndexCompanion.insert({
     required String name,
     required String articleId,
+    this.origin = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : name = Value(name),
        articleId = Value(articleId);
   static Insertable<TagIndexData> custom({
     Expression<String>? name,
     Expression<String>? articleId,
+    Expression<String>? origin,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (name != null) 'name': name,
       if (articleId != null) 'article_id': articleId,
+      if (origin != null) 'origin': origin,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -844,11 +886,13 @@ class TagIndexCompanion extends UpdateCompanion<TagIndexData> {
   TagIndexCompanion copyWith({
     Value<String>? name,
     Value<String>? articleId,
+    Value<String>? origin,
     Value<int>? rowid,
   }) {
     return TagIndexCompanion(
       name: name ?? this.name,
       articleId: articleId ?? this.articleId,
+      origin: origin ?? this.origin,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -862,6 +906,9 @@ class TagIndexCompanion extends UpdateCompanion<TagIndexData> {
     if (articleId.present) {
       map['article_id'] = Variable<String>(articleId.value);
     }
+    if (origin.present) {
+      map['origin'] = Variable<String>(origin.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -873,6 +920,7 @@ class TagIndexCompanion extends UpdateCompanion<TagIndexData> {
     return (StringBuffer('TagIndexCompanion(')
           ..write('name: $name, ')
           ..write('articleId: $articleId, ')
+          ..write('origin: $origin, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2119,12 +2167,14 @@ typedef $$TagIndexTableCreateCompanionBuilder =
     TagIndexCompanion Function({
       required String name,
       required String articleId,
+      Value<String> origin,
       Value<int> rowid,
     });
 typedef $$TagIndexTableUpdateCompanionBuilder =
     TagIndexCompanion Function({
       Value<String> name,
       Value<String> articleId,
+      Value<String> origin,
       Value<int> rowid,
     });
 
@@ -2161,6 +2211,11 @@ class $$TagIndexTableFilterComposer
   });
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get origin => $composableBuilder(
+    column: $table.origin,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2202,6 +2257,11 @@ class $$TagIndexTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get origin => $composableBuilder(
+    column: $table.origin,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ArticlesTableOrderingComposer get articleId {
     final $$ArticlesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2237,6 +2297,9 @@ class $$TagIndexTableAnnotationComposer
   });
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get origin =>
+      $composableBuilder(column: $table.origin, builder: (column) => column);
 
   $$ArticlesTableAnnotationComposer get articleId {
     final $$ArticlesTableAnnotationComposer composer = $composerBuilder(
@@ -2292,20 +2355,24 @@ class $$TagIndexTableTableManager
               ({
                 Value<String> name = const Value.absent(),
                 Value<String> articleId = const Value.absent(),
+                Value<String> origin = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TagIndexCompanion(
                 name: name,
                 articleId: articleId,
+                origin: origin,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String name,
                 required String articleId,
+                Value<String> origin = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TagIndexCompanion.insert(
                 name: name,
                 articleId: articleId,
+                origin: origin,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

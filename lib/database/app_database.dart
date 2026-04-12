@@ -16,7 +16,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
@@ -43,6 +43,10 @@ class AppDatabase extends _$AppDatabase {
         if (from < 6) {
           // <--- NEU
           await m.addColumn(articleNotes, articleNotes.tags);
+        }
+        if (from < 7) {
+          // Spalte origin hinzufügen
+          await m.addColumn(tagIndex, tagIndex.origin);
         }
       },
     );
@@ -74,23 +78,47 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
-      // 2. ALLE Tags sammeln (Set verhindert Duplikate)
-      final allTags = <String>{...meta.tags};
-      for (final n in notes) {
-        allTags.addAll(n.tags);
-      }
-      for (final h in highlights) {
-        allTags.addAll(h.tags);
-      }
-
-      // 3. Tag-Index bereinigen und neu setzen
       await (delete(
         tagIndex,
       )..where((t) => t.articleId.equals(meta.uuid))).go();
-      for (final tag in allTags) {
-        await into(
-          tagIndex,
-        ).insert(TagIndexCompanion.insert(name: tag, articleId: meta.uuid));
+
+      // 3. Tags nach Herkunft getrennt speichern
+
+      // A. Artikel-Tags
+      for (final tag in meta.tags) {
+        await into(tagIndex).insert(
+          TagIndexCompanion.insert(
+            name: tag,
+            articleId: meta.uuid,
+            origin: const Value('article'),
+          ),
+        );
+      }
+
+      // B. Tags aus Notizen
+      for (final n in notes) {
+        for (final tag in n.tags) {
+          await into(tagIndex).insertOnConflictUpdate(
+            TagIndexCompanion.insert(
+              name: tag,
+              articleId: meta.uuid,
+              origin: const Value('note'),
+            ),
+          );
+        }
+      }
+
+      // C. Tags aus Highlights
+      for (final h in highlights) {
+        for (final tag in h.tags) {
+          await into(tagIndex).insertOnConflictUpdate(
+            TagIndexCompanion.insert(
+              name: tag,
+              articleId: meta.uuid,
+              origin: const Value('highlight'),
+            ),
+          );
+        }
       }
 
       // 3. Autoren bereinigen und neu setzen
@@ -126,6 +154,13 @@ class AppDatabase extends _$AppDatabase {
       ..addColumns([tagIndex.name]);
     final results = await query.get();
     return results.map((row) => row.read(tagIndex.name)!).toList();
+  }
+
+  Stream<List<String>> watchTagsForArticle(String articleId) {
+    final query = select(tagIndex)
+      ..where((t) => t.articleId.equals(articleId))
+      ..where((t) => t.origin.equals('article'));
+    return query.watch().map((rows) => rows.map((r) => r.name).toList());
   }
 
   Future<void> syncNotes(String articleId, List<ArticleNote> notes) async {

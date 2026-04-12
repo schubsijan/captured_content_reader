@@ -55,3 +55,11 @@ final allTagsProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.getAllTags(); // Führt "SELECT DISTINCT name FROM tagIndex" aus
 });
+
+final tagsForArticleProvider = StreamProvider.family<List<String>, String>((
+  ref,
+  id,
+) {
+  final db = ref.watch(databaseProvider);
+  return db.watchTagsForArticle(id);
+});

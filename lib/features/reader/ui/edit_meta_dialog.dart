@@ -22,7 +22,7 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
   late TextEditingController _urlCtrl;
   DateTime? _publishedAt;
 
-  // Wir halten den State der Autoren lokal im Widget
+  // State für die Autoren
   late List<_AuthorEntry> _authorEntries;
 
   @override
@@ -33,8 +33,6 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
     _urlCtrl = TextEditingController(text: widget.meta.url);
     _publishedAt = widget.meta.publishedAt;
 
-    // Autoren initialisieren: Wir gehen standardmäßig von "Organisation" (Single String) aus,
-    // es sei denn, wir erkennen ein Komma-Format o.ä., aber hier starten wir simpel.
     _authorEntries = widget.meta.authors.map((name) {
       return _AuthorEntry(initialName: name);
     }).toList();
@@ -54,14 +52,13 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
   void _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Autoren wieder zu Strings zusammenbauen
     final List<String> updatedAuthors = _authorEntries
         .map((e) => e.getFullName())
         .toList();
-    // Leere Einträge entfernen
     updatedAuthors.removeWhere((s) => s.trim().isEmpty);
 
-    // Neues Meta Objekt erstellen (kopieren vom alten)
+    // Erstellt neues Meta Objekt
+    // Wir übergeben widget.meta.tags, um die Tags beim Speichern der Meta-Daten nicht zu überschreiben
     final newMeta = widget.meta.copyWith(
       title: _titleCtrl.text.trim(),
       siteName: _siteNameCtrl.text.trim().isEmpty
@@ -70,15 +67,16 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
       url: _urlCtrl.text.trim(),
       publishedAt: _publishedAt,
       authors: updatedAuthors,
+      tags: widget.meta.tags,
     );
 
-    // Speichern via Repository
+    // Speichern via Repository (triggert Dateisystem + DB Index)
     await ref
         .read(articleRepositoryProvider)
         .updateArticleMeta(widget.article.id, newMeta);
 
     if (mounted) {
-      Navigator.pop(context); // Dialog schließen
+      Navigator.pop(context);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Metadaten gespeichert")));
@@ -90,7 +88,6 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.all(16),
       child: Scaffold(
-        // Scaffold innerhalb des Dialogs für schöne Toolbar
         appBar: AppBar(
           title: const Text("Metadaten bearbeiten"),
           actions: [
@@ -164,7 +161,6 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
                           lastDate: now.add(const Duration(days: 1)),
                         );
                         if (d != null && context.mounted) {
-                          // Optional: TimePicker hinterher
                           setState(() => _publishedAt = d);
                         }
                       },
@@ -215,40 +211,26 @@ class _EditMetaDialogState extends ConsumerState<EditMetaDialog> {
   }
 }
 
-// --- LOGIK FÜR EINE AUTOREN-ZEILE ---
+// --- Hilfsklassen für Autoren ---
 
 enum AuthorMode { person, org }
 
 class _AuthorEntry {
   AuthorMode mode = AuthorMode.org;
-
-  // Controller für Org-Modus
   final TextEditingController orgCtrl = TextEditingController();
-
-  // Controller für Person-Modus
   final TextEditingController firstCtrl = TextEditingController();
   final TextEditingController lastCtrl = TextEditingController();
 
   _AuthorEntry({required String initialName}) {
     orgCtrl.text = initialName;
-
-    // --- LOGIK ÄNDERUNG HIER ---
-    // Prüfung: Enthält der Name ein Komma? (z.B. "Werthmann, Julia")
     if (initialName.contains(',')) {
       mode = AuthorMode.person;
-
-      // Splitten am Komma für Nachname, Vorname
       final parts = initialName.split(',');
       lastCtrl.text = parts[0].trim();
-
       if (parts.length > 1) {
-        // Alles nach dem ersten Komma ist der Vorname
         firstCtrl.text = parts.sublist(1).join(',').trim();
       }
     } else {
-      // Kein Komma -> Standardmäßig Organisation / Single Name
-      // Wir bereiten aber die Person-Felder vor, falls es das Format "Vorname Nachname" hat
-      mode = AuthorMode.org;
       _parseAndSetPersonSpaceFormat(initialName);
     }
   }
@@ -259,14 +241,10 @@ class _AuthorEntry {
     lastCtrl.dispose();
   }
 
-  /// Fallback Parser: Nimmt "Vorname Nachname" (Space getrennt) an
   void _parseAndSetPersonSpaceFormat(String fullName) {
     final parts = fullName.trim().split(' ');
-    if (parts.isEmpty) {
-      firstCtrl.text = "";
-      lastCtrl.text = "";
-    } else if (parts.length == 1) {
-      firstCtrl.text = "";
+    if (parts.isEmpty) return;
+    if (parts.length == 1) {
       lastCtrl.text = parts[0];
     } else {
       lastCtrl.text = parts.last;
@@ -274,51 +252,29 @@ class _AuthorEntry {
     }
   }
 
-  /// Baut den String für den Wechsel von Person -> Org
-  void _concatAndSetOrg() {
-    final first = firstCtrl.text.trim();
-    final last = lastCtrl.text.trim();
-
-    // Hier entscheiden wir, wie wir speichern wollen, wenn wir zurück zu Org wechseln.
-    // Standardmäßig meist "Vorname Nachname".
-    if (first.isEmpty) {
-      orgCtrl.text = last;
-    } else {
-      orgCtrl.text = "$first $last";
-    }
-  }
-
-  /// Wird aufgerufen, wenn man vom Org-Modus (Textfeld) in den Person-Modus klickt.
-  /// Wir müssen entscheiden, ob wir ein Komma parsen oder Leerzeichen.
   void parseForToggle() {
     final currentText = orgCtrl.text;
     if (currentText.contains(',')) {
-      // Format: Nachname, Vorname
       final parts = currentText.split(',');
       lastCtrl.text = parts[0].trim();
-      if (parts.length > 1) {
-        firstCtrl.text = parts.sublist(1).join(',').trim();
-      }
+      if (parts.length > 1) firstCtrl.text = parts.sublist(1).join(',').trim();
     } else {
-      // Format: Vorname Nachname
       _parseAndSetPersonSpaceFormat(currentText);
     }
   }
 
-  String getFullName() {
-    // Wenn Org-Modus aktiv ist: Einfach den Text zurückgeben
-    if (mode == AuthorMode.org) return orgCtrl.text.trim();
-
+  void _concatAndSetOrg() {
     final first = firstCtrl.text.trim();
     final last = lastCtrl.text.trim();
+    orgCtrl.text = first.isEmpty ? last : "$first $last";
+  }
 
-    // Fallback, wenn Felder leer sind
+  String getFullName() {
+    if (mode == AuthorMode.org) return orgCtrl.text.trim();
+    final first = firstCtrl.text.trim();
+    final last = lastCtrl.text.trim();
     if (first.isEmpty) return last;
     if (last.isEmpty) return first;
-
-    // WICHTIG: Wir speichern als "Nachname, Vorname".
-    // Das garantiert, dass beim nächsten Laden das Komma gefunden wird
-    // und der Modus wieder korrekt auf "Person" (👤) gesetzt wird.
     return "$last, $first";
   }
 }
@@ -326,52 +282,33 @@ class _AuthorEntry {
 class AuthorRow extends StatefulWidget {
   final _AuthorEntry entry;
   final VoidCallback onDelete;
-
   const AuthorRow({super.key, required this.entry, required this.onDelete});
-
   @override
   State<AuthorRow> createState() => _AuthorRowState();
 }
 
 class _AuthorRowState extends State<AuthorRow> {
-  void _toggleMode() {
-    setState(() {
-      if (widget.entry.mode == AuthorMode.person) {
-        // Person -> Org: Zusammenfügen
-        widget.entry._concatAndSetOrg();
-        widget.entry.mode = AuthorMode.org;
-      } else {
-        // Org -> Person: Parsen (Jetzt mit neuer Methode)
-        widget.entry.parseForToggle(); // <--- HIER GEÄNDERT
-        widget.entry.mode = AuthorMode.person;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Toggle Button
         IconButton(
-          onPressed: _toggleMode,
-          icon: Text(
-            widget.entry.mode == AuthorMode.person ? "👤" : "🏢",
-            style: const TextStyle(fontSize: 20),
-          ),
-          tooltip: widget.entry.mode == AuthorMode.person
-              ? "Zu Organisation wechseln"
-              : "Zu Person wechseln",
+          onPressed: () => setState(() {
+            if (widget.entry.mode == AuthorMode.person) {
+              widget.entry._concatAndSetOrg();
+              widget.entry.mode = AuthorMode.org;
+            } else {
+              widget.entry.parseForToggle();
+              widget.entry.mode = AuthorMode.person;
+            }
+          }),
+          icon: Text(widget.entry.mode == AuthorMode.person ? "👤" : "🏢"),
         ),
-
-        // Input Felder
         Expanded(
           child: widget.entry.mode == AuthorMode.person
               ? Row(
                   children: [
                     Expanded(
-                      flex: 4,
                       child: TextField(
                         controller: widget.entry.lastCtrl,
                         decoration: const InputDecoration(
@@ -384,7 +321,6 @@ class _AuthorRowState extends State<AuthorRow> {
                     const Text(","),
                     const SizedBox(width: 8),
                     Expanded(
-                      flex: 3,
                       child: TextField(
                         controller: widget.entry.firstCtrl,
                         decoration: const InputDecoration(
@@ -403,8 +339,6 @@ class _AuthorRowState extends State<AuthorRow> {
                   ),
                 ),
         ),
-
-        // Delete Button
         IconButton(
           icon: const Icon(Icons.close, color: Colors.grey),
           onPressed: widget.onDelete,
@@ -413,3 +347,4 @@ class _AuthorRowState extends State<AuthorRow> {
     );
   }
 }
+

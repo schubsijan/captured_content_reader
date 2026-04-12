@@ -130,16 +130,16 @@ class _MyAppState extends State<MyApp> {
         InitializationSettings(android: initializationSettingsAndroid);
 
     flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
+      settings: initializationSettings, // <--- HIER: "settings:" hinzufügen
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         if (response.payload != null) {
-          // Klick auf Benachrichtigung während App läuft (oder im Hintergrund ist)
           _openArticle(response.payload!);
         }
       },
     );
   }
 
+  // <--- NEU: Direkte Navigation ohne Overlay
   void _openArticle(String articleId) {
     // 1. App sichtbar machen (falls sie transparent war)
     if (!_showMainUI) {

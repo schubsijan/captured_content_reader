@@ -47,6 +47,7 @@ class _ArticleTagDialogState extends ConsumerState<ArticleTagDialog> {
                 availableTags:
                     availableTags, // Hier wird das Autocomplete gefüttert
                 onTagsChanged: (tags) => _currentTags = tags,
+                autofocus: true,
               ),
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => TagInputField(

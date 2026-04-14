@@ -4,12 +4,14 @@ class TagInputField extends StatefulWidget {
   final List<String> initialTags;
   final List<String> availableTags;
   final ValueChanged<List<String>> onTagsChanged;
+  final bool autofocus;
 
   const TagInputField({
     super.key,
     required this.initialTags,
     this.availableTags = const [],
     required this.onTagsChanged,
+    this.autofocus = false,
   });
 
   @override
@@ -19,13 +21,27 @@ class TagInputField extends StatefulWidget {
 class _TagInputFieldState extends State<TagInputField> {
   late List<String> _selectedTags;
 
-  // Referenz auf den Controller, um das Feld nach Klick auf einen Vorschlag zu leeren
   TextEditingController? _autoCompleteController;
+  late FocusNode _internalFocusNode;
 
   @override
   void initState() {
     super.initState();
     _selectedTags = List.from(widget.initialTags);
+
+    _internalFocusNode = FocusNode();
+
+    if (widget.autofocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _internalFocusNode.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _internalFocusNode.dispose();
+    super.dispose();
   }
 
   void _addTag(String tag) {
@@ -96,6 +112,7 @@ class _TagInputFieldState extends State<TagInputField> {
                     return TextField(
                       controller: controller,
                       focusNode: focusNode,
+                      autofocus: widget.autofocus,
                       decoration: const InputDecoration(
                         hintText: "Tags eingeben...",
                         border: InputBorder.none,

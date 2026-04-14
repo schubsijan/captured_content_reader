@@ -4,6 +4,7 @@ import '../../../main.dart'; // Zugriff auf den globalen databaseProvider (oder 
 import '../data/article_repository.dart';
 import '../../../services/library_sync_service.dart';
 import '../../../services/storage_access.dart';
+import '../data/file_data_source.dart';
 
 enum LibraryFilter { unread, read }
 
@@ -11,10 +12,15 @@ final libraryFilterProvider = StateProvider<LibraryFilter>(
   (ref) => LibraryFilter.unread,
 );
 
+final fileDataSourceProvider = Provider<FileDataSource>((ref) {
+  final storage = ref.watch(storageServiceProvider);
+  return FileDataSource(storage);
+});
+
 final articleRepositoryProvider = Provider<ArticleRepository>((ref) {
   final db = ref.watch(databaseProvider);
-  final storage = ref.watch(storageServiceProvider);
-  return ArticleRepository(db, storage);
+  final fileSource = ref.watch(fileDataSourceProvider);
+  return ArticleRepository(db, fileSource);
 });
 
 final unreadArticlesProvider = StreamProvider<List<Article>>((ref) {
@@ -33,18 +39,15 @@ final singleArticleProvider = StreamProvider.family<Article?, String>((
 ) {
   final db = ref.watch(databaseProvider);
 
-  // Abfrage auf die DB für genau eine ID
   return (db.select(
     db.articles,
   )..where((t) => t.id.equals(id))).watchSingleOrNull();
 });
 
-// 1. Storage Provider (simpel)
 final storageServiceProvider = Provider<StorageService>(
   (ref) => StorageService(),
 );
 
-// 2. Sync Service Provider
 final librarySyncServiceProvider = Provider<LibrarySyncService>((ref) {
   final db = ref.watch(databaseProvider);
   final storage = ref.watch(storageServiceProvider);
@@ -53,7 +56,7 @@ final librarySyncServiceProvider = Provider<LibrarySyncService>((ref) {
 
 final allTagsProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(databaseProvider);
-  return db.getAllTags(); // Führt "SELECT DISTINCT name FROM tagIndex" aus
+  return db.getAllTags();
 });
 
 final tagsForArticleProvider = StreamProvider.family<List<String>, String>((

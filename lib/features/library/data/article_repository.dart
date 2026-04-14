@@ -1,16 +1,15 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:drift/drift.dart';
-import 'package:path/path.dart' as p;
+import 'package:drift/drift.dart' as drift;
+
 import '../../../database/app_database.dart';
 import '../../../models/article_meta.dart';
-import '../../../services/storage_access.dart';
+import 'file_data_source.dart';
 
 class ArticleRepository {
   final AppDatabase _db;
-  final StorageService _storage; // <--- NEU: Für File-Zugriff
+  final FileDataSource _fileSource;
 
-  ArticleRepository(this._db, this._storage);
+  ArticleRepository(this._db, this._fileSource);
 
   Stream<List<Article>> watchUnreadArticles() {
     return (_db.select(_db.articles)
@@ -34,120 +33,61 @@ class ArticleRepository {
         .watch();
   }
 
-  /// Setzt den Lesestatus eines Artikels (File-First + DB Sync)
-  /// [isRead] = true -> Als gelesen markieren (verschwindet aus Liste)
-  /// [isRead] = false -> Als ungelesen markieren (taucht wieder auf = Undo)
   Future<void> updateReadStatus(String articleId, bool isRead) async {
-    // 1. Pfad zur meta.json ermitteln
-    final appDir = await _storage.getAppDirectory();
-    final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+    // 1. Lesen
+    final meta = await _fileSource.readMeta(articleId);
+    if (meta == null) return;
 
-    if (!await metaFile.exists()) {
-      print("Meta file not found for $articleId");
-      return;
-    }
+    // 2. Updaten
+    final updatedMeta = meta.copyWith(isRead: isRead);
 
-    try {
-      // 2. FILE UPDATE (Atomar)
-      final content = await metaFile.readAsString();
-      final jsonMap = jsonDecode(content);
-      final meta = ArticleMeta.fromJson(jsonMap);
+    // 3. File-First speichern
+    await _fileSource.writeMetaAtomic(articleId, updatedMeta);
 
-      // Status ändern (nutzt copyWith aus freezed)
-      final updatedMeta = meta.copyWith(isRead: isRead);
-
-      // Schreiben (Atomar via .tmp)
-      final tempFile = File('${metaFile.path}.tmp');
-      await tempFile.writeAsString(
-        const JsonEncoder.withIndent('  ').convert(updatedMeta.toJson()),
-        flush: true,
-      );
-      await tempFile.rename(metaFile.path);
-
-      // 3. DB UPDATE (Damit die UI reagiert)
-      await (_db.update(
-        _db.articles,
-      )..where((t) => t.id.equals(articleId))).write(
-        ArticlesCompanion(
-          isRead: Value(isRead), // Hier nutzen wir den Parameter
-          // Optional: fileLastModified updaten, damit Sync beim nächsten Start bescheid weiß
-          fileLastModified: Value(DateTime.now()),
-        ),
-      );
-    } catch (e) {
-      print("Error updating read status: $e");
-      rethrow;
-    }
+    // 4. Cache (DB) aktualisieren
+    await (_db.update(
+      _db.articles,
+    )..where((t) => t.id.equals(articleId))).write(
+      ArticlesCompanion(
+        isRead: drift.Value(isRead),
+        fileLastModified: drift.Value(DateTime.now()),
+      ),
+    );
   }
 
-  /// Löscht einen Artikel komplett (Ordner + DB Eintrag).
-  /// ACHTUNG: Das ist destruktiv und kann ohne Backup nicht rückgängig gemacht werden.
   Future<void> deleteArticle(String articleId) async {
-    // 1. Ordner im Dateisystem löschen
-    final appDir = await _storage.getAppDirectory();
-    final articleDir = Directory(p.join(appDir.path, articleId));
+    // 1. File-First: Den Ordner auf dem Dateisystem löschen
+    await _fileSource.deleteArticleFolder(articleId);
 
-    if (await articleDir.exists()) {
-      await articleDir.delete(recursive: true);
-    }
-
-    // 2. Aus der Datenbank entfernen
+    // 2. Ephemeren Cache (DB) bereinigen
     await (_db.delete(_db.articles)..where((t) => t.id.equals(articleId))).go();
   }
 
   Future<void> updateArticleTags(String articleId, List<String> newTags) async {
-    final appDir = await _storage.getAppDirectory();
-    final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+    // 1. Aktuelle Metadaten von der Disk lesen
+    final meta = await _fileSource.readMeta(articleId);
+    if (meta == null) return;
 
-    if (!await metaFile.exists()) return;
+    // 2. Kopie mit neuen Tags erstellen
+    final updatedMeta = meta.copyWith(tags: newTags);
 
-    try {
-      // 1. JSON laden
-      final content = await metaFile.readAsString();
-      final meta = ArticleMeta.fromJson(jsonDecode(content));
+    // 3. File-First: Atomar auf die Disk schreiben
+    await _fileSource.writeMetaAtomic(articleId, updatedMeta);
 
-      // 2. Objekt mit neuen Tags kopieren
-      final updatedMeta = meta.copyWith(tags: newTags);
-
-      // 3. Atomar schreiben (File-First)
-      final tempFile = File('${metaFile.path}.tmp');
-      await tempFile.writeAsString(
-        const JsonEncoder.withIndent('  ').convert(updatedMeta.toJson()),
-        flush: true,
-      );
-      await tempFile.rename(metaFile.path);
-
-      // 4. DB Index aktualisieren
-      // Wir nutzen indexArticle, da es bereits die Logik besitzt,
-      // Tags aus meta, notes und highlights zu mergen.
-      final fileLastModified = DateTime.now();
-      await _db.indexArticle(updatedMeta, fileLastModified);
-    } catch (e) {
-      print("Error updating article tags: $e");
-      rethrow;
-    }
+    // 4. Cache (DB) synchronisieren
+    // Wir nutzen indexArticle, da es Tags, Autoren und den Artikel-Eintrag
+    // sauber neu aufbaut und verknüpft.
+    final fileLastModified = DateTime.now();
+    await _db.indexArticle(updatedMeta, fileLastModified);
   }
 
   /// Aktualisiert die Metadaten eines Artikels (Titel, Autoren, etc.)
   Future<void> updateArticleMeta(String articleId, ArticleMeta newMeta) async {
-    final appDir = await _storage.getAppDirectory();
-    final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+    // 1. File-First: Das komplette, neue Meta-Objekt atomar auf die Disk schreiben
+    await _fileSource.writeMetaAtomic(articleId, newMeta);
 
-    if (!await metaFile.exists()) return;
-
-    // 1. FILE UPDATE
-    // Wir schreiben das komplette neue Meta-Objekt
-    final tempFile = File('${metaFile.path}.tmp');
-    await tempFile.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(newMeta.toJson()),
-      flush: true,
-    );
-    await tempFile.rename(metaFile.path);
-
-    // 2. DB UPDATE
-    // Wir nutzen die existierende Index-Logik, da sie alles abdeckt (Tags, Autoren, etc.)
-    // und auch das fileLastModified aktualisiert.
-    final fileLastModified = DateTime.now(); // oder metaFile.lastModifiedSync()
+    // 2. Cache (DB) synchronisieren
+    final fileLastModified = DateTime.now();
     await _db.indexArticle(newMeta, fileLastModified);
   }
 }

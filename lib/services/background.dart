@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:captured_content_reader/database/app_database.dart';
 import 'package:captured_content_reader/services/article_ingestion_service.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 // WICHTIG: Neue IDs, damit Android die Settings neu lädt!
 const statusChannelId = 'import_status_v5';
@@ -120,8 +121,24 @@ Future<void> _pollFile(
   FlutterLocalNotificationsPlugin localNav,
   StorageService storageService,
 ) async {
-  final Directory downloadDir = Directory('/storage/emulated/0/Download');
-  final File targetFile = File(p.join(downloadDir.path, fileName));
+  Directory? downloadDir;
+  if (Platform.isAndroid) {
+    // path_provider Funktion für externe Downloads
+    downloadDir = await getExternalStorageDirectory();
+    // Fallback Logik, falls getExternalStorageDirectory null liefert
+    if (downloadDir != null) {
+      final paths = downloadDir.path.split('/');
+      final rootPath = paths.sublist(0, paths.indexOf('Android')).join('/');
+      downloadDir = Directory('$rootPath/Download');
+    }
+  }
+
+  if (downloadDir == null || !await downloadDir.exists()) {
+    service.stopSelf();
+    return;
+  }
+
+  final targetFile = File(p.join(downloadDir.path, fileName));
 
   int attempts = 0;
   const int maxAttempts = 600;
@@ -177,6 +194,7 @@ Future<void> _processImport(
 
     // DB Verbindung schließen, da wir im Background fertig sind
     await db.close();
+    service.invoke('import_success', {'articleId': articleId});
 
     // 3. Notification (bleibt wie vorher, nur sauberer)
     await localNav.show(
@@ -204,4 +222,3 @@ Future<void> _processImport(
     service.stopSelf();
   }
 }
-

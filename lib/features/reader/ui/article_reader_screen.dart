@@ -1,24 +1,21 @@
 import 'dart:io';
-import '../../../main.dart';
-import 'notes_bottom_sheet.dart';
 import 'dart:convert';
-import 'package:captured_content_reader/features/reader/ui/edit_meta_dialog.dart';
-import 'package:captured_content_reader/features/shared/ui/article_actions.dart';
-import 'package:captured_content_reader/features/shared/ui/article_meta_display.dart';
-import 'package:captured_content_reader/features/shared/ui/plain_text_note_dialog.dart';
-import '../services/article_note_service.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
 import '../../../database/app_database.dart';
 import '../../../models/article_meta.dart';
 import '../../../services/storage_access.dart';
 import '../../library/providers/library_providers.dart';
-import '../../../models/highlight.dart';
-import '../services/highlight_service.dart';
+import '../../shared/ui/article_actions.dart';
+import '../../shared/ui/article_meta_display.dart';
+import 'edit_meta_dialog.dart';
+import 'notes_bottom_sheet.dart';
+import '../providers/reader_controller.dart';
 
 class ArticleReaderScreen extends ConsumerStatefulWidget {
   final String articleId;
@@ -31,31 +28,12 @@ class ArticleReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
-  WebViewController? _controller;
-  bool _isLoadingFile = true;
-  late HighlightService _highlightService;
-  late ArticleNoteService _noteService;
-
-  bool _uiVisible = true;
   final GlobalKey _headerKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    _initSequence();
-  }
-
-  Future<void> _initSequence() async {
-    final syncService = ref.read(librarySyncServiceProvider);
-
-    _highlightService = HighlightService(widget.articleId, syncService);
-    await _highlightService.init();
-
-    final db = ref.read(databaseProvider);
-    _noteService = ArticleNoteService(widget.articleId, db, syncService);
-    await _noteService.init();
-
-    await _prepareWebView();
+    _prepareWebView();
   }
 
   Future<void> _prepareWebView() async {
@@ -75,24 +53,36 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     }
 
     final controller = WebViewController();
+    final notifier = ref.read(
+      readerControllerProvider(widget.articleId).notifier,
+    );
 
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
       ..addJavaScriptChannel(
         'CleanReadApp',
-        onMessageReceived: _handleJsMessage,
+        onMessageReceived: (msg) =>
+            notifier.handleJsMessage(msg.message, context),
       )
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (String url) async {
             await _injectHighlightScripts(controller);
-            await _restoreHighlights(controller);
+
+            final highlights = await notifier.highlightService.loadHighlights();
+            if (highlights.isNotEmpty) {
+              final jsonString = jsonEncode(
+                highlights.map((h) => h.toJson()).toList(),
+              );
+              final sanitizedJson = jsonEncode(jsonString);
+              await controller.runJavaScript(
+                'window.cleanReadEngine.restoreHighlights(JSON.parse($sanitizedJson));',
+              );
+            }
 
             if (mounted) {
-              setState(() {
-                _isLoadingFile = false;
-              });
+              notifier.setLoading(false);
             }
           },
           onNavigationRequest: (NavigationRequest request) async {
@@ -120,11 +110,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       )
       ..loadFile(htmlFile.path);
 
-    if (mounted) {
-      setState(() {
-        _controller = controller;
-      });
-    }
+    notifier.initWebView(controller);
   }
 
   Future<void> _injectHighlightScripts(WebViewController controller) async {
@@ -146,7 +132,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         style.innerHTML = `
           .cr-highlight {
             touch-action: manipulation;
-            /* Verhindert den 300ms Delay bei manchen Browsern und das automatische Zoomen */
           }
           .cr-highlight.has-note::before {
             content: '';
@@ -184,98 +169,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     }
   }
 
-  Future<void> _restoreHighlights(WebViewController controller) async {
-    final highlights = await _highlightService.loadHighlights();
-    if (highlights.isNotEmpty) {
-      final jsonString = jsonEncode(highlights.map((h) => h.toJson()).toList());
-      final sanitizedJson = jsonEncode(jsonString);
-      await controller.runJavaScript(
-        'window.cleanReadEngine.restoreHighlights(JSON.parse($sanitizedJson));',
-      );
-    }
-  }
-
-  void _handleJsMessage(JavaScriptMessage message) async {
-    try {
-      final Map<String, dynamic> payload = jsonDecode(message.message);
-      final String action = payload['action'];
-
-      if (action == 'ui_control') {
-        final String command = payload['data'];
-        if (command == 'hide_ui' && _uiVisible) {
-          setState(() => _uiVisible = false);
-        } else if (command == 'show_ui' && !_uiVisible) {
-          setState(() => _uiVisible = true);
-        }
-        return;
-      }
-
-      final dynamic data = payload['data'];
-
-      switch (action) {
-        case 'create':
-          final highlight = Highlight.fromJson(data);
-          await _highlightService.addHighlight(highlight);
-          break;
-        case 'update':
-          final id = data['id'];
-          final color = data['color'];
-          await _highlightService.updateHighlight(id, newColor: color);
-          break;
-        case 'edit_note':
-          final id = data['id'];
-          final highlights = await _highlightService.loadHighlights();
-          final highlight = highlights.firstWhere((h) => h.id == id);
-          final hasNote =
-              highlight.note != null && highlight.note!.trim().isNotEmpty;
-          final availableTags = await ref.read(allTagsProvider.future);
-
-          if (mounted) {
-            final result = await showDialog<(String, List<String>)>(
-              context: context,
-              builder: (context) => PlainTextNoteDialog(
-                title: hasNote
-                    ? 'Highlight Notiz bearbeiten'
-                    : 'Notiz hinzufügen',
-                initialText: highlight.note ?? '',
-                initialTags: highlight.tags,
-                availableTags: availableTags,
-                showDeleteButton: hasNote,
-              ),
-            );
-
-            if (result != null) {
-              final newText = result.$1.trim();
-              final newTags = result.$2;
-              final isNotEmpty = newText.isNotEmpty;
-
-              await _highlightService.updateHighlight(
-                id,
-                newNote: isNotEmpty ? newText : null,
-                clearNote: !isNotEmpty,
-                newTags: newTags,
-              );
-
-              final jsNote = isNotEmpty ? jsonEncode(newText) : 'null';
-              final jsTags = jsonEncode(newTags);
-              await _controller?.runJavaScript(
-                "window.cleanReadEngine.updateNoteIcon('$id', $jsNote, $jsTags);",
-              );
-              ref.invalidate(allTagsProvider);
-            }
-          }
-          break;
-        case 'delete':
-          await _highlightService.deleteHighlight(data['id']);
-          break;
-      }
-    } catch (e) {
-      print("Error handling JS message: $e");
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final readerState = ref.watch(readerControllerProvider(widget.articleId));
     final articleStream = ref.watch(singleArticleProvider(widget.articleId));
 
     return Scaffold(
@@ -284,23 +180,26 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: _controller == null
+            child: readerState.webViewController == null
                 ? const SizedBox()
                 : AnimatedOpacity(
-                    opacity: _isLoadingFile ? 0.0 : 1.0,
+                    opacity: readerState.isLoadingFile ? 0.0 : 1.0,
                     duration: const Duration(milliseconds: 400),
                     curve: Curves.easeOut,
-                    child: WebViewWidget(controller: _controller!),
+                    child: WebViewWidget(
+                      controller: readerState.webViewController!,
+                    ),
                   ),
           ),
-          if (_isLoadingFile) const Center(child: CircularProgressIndicator()),
+          if (readerState.isLoadingFile)
+            const Center(child: CircularProgressIndicator()),
           Align(
             alignment: Alignment.topCenter,
             child: AnimatedSlide(
-              offset: _uiVisible ? Offset.zero : const Offset(0, -1),
+              offset: readerState.uiVisible ? Offset.zero : const Offset(0, -1),
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              child: _buildFloatingHeader(context, articleStream),
+              child: _buildFloatingHeader(context, articleStream, readerState),
             ),
           ),
         ],
@@ -311,6 +210,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Widget _buildFloatingHeader(
     BuildContext context,
     AsyncValue<Article?> articleStream,
+    ReaderState readerState,
   ) {
     final topPadding = MediaQuery.of(context).viewPadding.top;
 
@@ -332,7 +232,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ZEILE 1: Zurück, Titel, Hauptmenü
           Row(
             children: [
               IconButton(
@@ -362,7 +261,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               ),
             ],
           ),
-
           articleStream.when(
             data: (article) {
               if (article == null) return const SizedBox();
@@ -371,21 +269,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // BLOCK OBEN: (SiteName & Autor) | Icons
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Links: Stack aus SiteName und Autor
                         Expanded(
                           child: ArticleMetaDisplay(
                             article: article,
                             compact: true,
                             showTopRow: true,
                             showAuthors: true,
-                            showTags: false, // Hier noch keine Tags
+                            showTags: false,
                           ),
                         ),
-                        // Rechts: Die Icons untereinander
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -397,14 +292,20 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                               );
                             }),
                             _buildHeaderIcon(Icons.description_outlined, () {
+                              final notifier = ref.read(
+                                readerControllerProvider(
+                                  widget.articleId,
+                                ).notifier,
+                              );
                               showModalBottomSheet(
                                 context: context,
                                 isScrollControlled: true,
                                 backgroundColor: Colors.transparent,
                                 builder: (context) => NotesBottomSheet(
-                                  noteService: _noteService,
-                                  highlightService: _highlightService,
-                                  webViewController: _controller,
+                                  noteService: notifier.noteService,
+                                  highlightService: notifier.highlightService,
+                                  webViewController:
+                                      readerState.webViewController,
                                 ),
                               );
                             }),
@@ -412,13 +313,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                         ),
                       ],
                     ),
-                    // BLOCK UNTEN: Tags über volle Breite
                     ArticleMetaDisplay(
                       article: article,
                       compact: true,
                       showTopRow: false,
                       showAuthors: false,
-                      showTags: true, // Hier NUR die Tags
+                      showTags: true,
                     ),
                   ],
                 ),

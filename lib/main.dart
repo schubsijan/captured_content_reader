@@ -9,6 +9,8 @@ import 'package:captured_content_reader/features/library/ui/library_screen.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import 'package:captured_content_reader/features/reader/ui/article_reader_screen.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:captured_content_reader/features/library/providers/library_providers.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -59,13 +61,14 @@ void main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
+
   @override
-  State<MyApp> createState() => _MyAppState();
+  ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends ConsumerState<MyApp> {
   final ImportStarter _importStarter = ImportStarter();
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -77,6 +80,19 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initApp();
+    _listenToBackgroundImports();
+  }
+
+  // Der Listener für Isolate-Kommunikation
+  void _listenToBackgroundImports() {
+    FlutterBackgroundService().on('import_success').listen((event) {
+      print("Main UI: Import Event empfangen! Lade Bibliothek neu...");
+      // Nur wenn wirklich ein Import stattfand, wird der Stream refresht
+      ref.invalidate(unreadArticlesProvider);
+
+      // Einen Smart-Sync anstoßen, damit auch das FileSystem sync ist
+      ref.read(librarySyncServiceProvider).syncFileSystemToDatabase();
+    });
   }
 
   void _initApp() async {
@@ -130,7 +146,7 @@ class _MyAppState extends State<MyApp> {
         InitializationSettings(android: initializationSettingsAndroid);
 
     flutterLocalNotificationsPlugin.initialize(
-      settings: initializationSettings, // <--- HIER: "settings:" hinzufügen
+      settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         if (response.payload != null) {
           _openArticle(response.payload!);
@@ -139,7 +155,6 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  // <--- NEU: Direkte Navigation ohne Overlay
   void _openArticle(String articleId) {
     // 1. App sichtbar machen (falls sie transparent war)
     if (!_showMainUI) {

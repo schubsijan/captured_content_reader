@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/services.dart';
 
 import '../../../database/app_database.dart';
 import '../../../main.dart'; // für databaseProvider
@@ -95,14 +96,17 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
           final id = data['id'];
           final highlights = await highlightService.loadHighlights();
           final highlight = highlights.firstWhere((h) => h.id == id);
-          final hasNote = highlight.note != null && highlight.note!.trim().isNotEmpty;
+          final hasNote =
+              highlight.note != null && highlight.note!.trim().isNotEmpty;
           final availableTags = await ref.read(allTagsProvider.future);
 
           if (context.mounted) {
             final result = await showDialog<(String, List<String>)>(
               context: context,
               builder: (context) => PlainTextNoteDialog(
-                title: hasNote ? 'Highlight Notiz bearbeiten' : 'Notiz hinzufügen',
+                title: hasNote
+                    ? 'Highlight Notiz bearbeiten'
+                    : 'Notiz hinzufügen',
                 initialText: highlight.note ?? '',
                 initialTags: highlight.tags,
                 availableTags: availableTags,
@@ -134,6 +138,21 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
         case 'delete':
           await highlightService.deleteHighlight(data['id']);
           break;
+        case 'copy_to_clipboard':
+          final String textToCopy = data['text'];
+          await Clipboard.setData(ClipboardData(text: textToCopy));
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Text in Zwischenablage kopiert"),
+                duration: Duration(seconds: 1),
+                behavior: SnackBarBehavior.floating,
+                width: 250, // Kompakt halten
+              ),
+            );
+          }
+          break;
       }
     } catch (e) {
       print("Error handling JS message: $e");
@@ -141,7 +160,5 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
   }
 }
 
-final readerControllerProvider =
-    NotifierProvider.autoDispose.family<ReaderController, ReaderState, String>(
-  ReaderController.new,
-);
+final readerControllerProvider = NotifierProvider.autoDispose
+    .family<ReaderController, ReaderState, String>(ReaderController.new);

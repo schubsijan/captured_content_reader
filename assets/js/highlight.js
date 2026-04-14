@@ -146,33 +146,37 @@ class CleanReadEngine {
     const menu = div({
       onclick: (e) => e.stopPropagation(),
       style: () => `
-        position: fixed;
-        bottom: ${this.activeHighlightId.val && !this.isDraggingHandle.val ? '60px' : '-120px'};
-        left: 50%;
-        transform: translateX(-50%);
-        background: white;
-        padding: 10px;
-        border-radius: 30px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-        display: flex;
-        gap: 8px;
-        z-index: 99999;
-        transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        max-width: calc(100vw - 26px);
-      `
+position: fixed;
+bottom: ${this.activeHighlightId.val && !this.isDraggingHandle.val ? '60px' : '-120px'};
+left: 50%;
+transform: translateX(-50%);
+background: white;
+padding: 10px;
+border-radius: 30px;
+box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+display: flex;
+gap: 8px;
+z-index: 99999;
+transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+max-width: calc(100vw - 26px);
+`
     },
       this.colors.map(c =>
         button({
           style: () => `
-            width: 30px; height: 30px; border-radius: 50%;
-            border: 2px solid ${this.activeColor.val === c.hex ? '#333' : 'transparent'};
-            background-color: ${c.hex}80;
-            cursor: pointer; transition: all 0.1s;
-          `,
+width: 30px; height: 30px; border-radius: 50%;
+border: 2px solid ${this.activeColor.val === c.hex ? '#333' : 'transparent'};
+background-color: ${c.hex}80;
+cursor: pointer; transition: all 0.1s;
+`,
           onclick: () => this.updateHighlightColor(this.activeHighlightId.val, c.hex)
         })
       ),
       div({ style: "width: 1px; background: #ddd; margin: 0 4px;" }),
+      button({
+        style: "background: none; border: none; font-size: 18px; cursor: pointer;",
+        onclick: () => this.copyHighlightText(this.activeHighlightId.val)
+      }, "📋"),
       button({
         style: "background: none; border: none; font-size: 18px; cursor: pointer;",
         onclick: () => this._sendToFlutter('edit_note', { id: this.activeHighlightId.val })
@@ -228,40 +232,40 @@ class CleanReadEngine {
     // Statische Styles definieren wir hier einmalig
     const visual = div({
       style: `
-            width: 4px; 
-            /* height wird von _styleHandleInner gesetzt */
-            background-color: ${this.activeColor.val}; 
-            border-radius: 2px;
-            position: absolute; left: 50%; top: 0; transform: translateX(-50%);
-            z-index: 2;
-        `
+width: 4px; 
+/* height wird von _styleHandleInner gesetzt */
+background-color: ${this.activeColor.val}; 
+border-radius: 2px;
+position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+z-index: 2;
+`
     });
 
     const knob = div({
       style: `
-            width: 20px; height: 20px; 
-            background-color: ${this.activeColor.val}; 
-            border-radius: ${isStart ? '50% 50% 0 50%' : '0 50% 50% 50%'};
-            transform: rotate(45deg);
-            position: absolute;
-            left: 5px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            z-index: 1;
-        `
+width: 20px; height: 20px; 
+background-color: ${this.activeColor.val}; 
+border-radius: ${isStart ? '50% 50% 0 50%' : '0 50% 50% 50%'};
+transform: rotate(45deg);
+position: absolute;
+left: 5px; 
+box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+z-index: 1;
+`
     });
 
     const handleWrapper = div({
       class: this.handleClass,
       style: `
-            position: absolute; left: ${x}px; top: ${y}px;
-            width: ${handleSize}px; 
-            /* height wird von _styleHandleInner gesetzt */
-            transform: translateX(-50%);
-            pointer-events: auto; 
-            touch-action: none;
-            cursor: col-resize;
-            z-index: 10001; 
-        `,
+position: absolute; left: ${x}px; top: ${y}px;
+width: ${handleSize}px; 
+/* height wird von _styleHandleInner gesetzt */
+transform: translateX(-50%);
+pointer-events: auto; 
+touch-action: none;
+cursor: col-resize;
+z-index: 10001; 
+`,
       onpointerdown: (e) => this._initResizeDrag(e, isStart, id)
     }, visual, knob);
 
@@ -513,14 +517,14 @@ class CleanReadEngine {
     for (const rect of rects) {
       const el = div({
         style: `
-                position: absolute;
-                left: ${rect.left + scrollX}px;
-                top: ${rect.top + scrollY}px;
-                width: ${rect.width}px;
-                height: ${rect.height}px;
-                background-color: ${color}80; /* Gleiche Farbe/Transparenz wie Highlight */
-                mix-blend-mode: multiply; /* Optional: sieht besser aus auf Text */
-            `
+position: absolute;
+left: ${rect.left + scrollX}px;
+top: ${rect.top + scrollY}px;
+width: ${rect.width}px;
+height: ${rect.height}px;
+background-color: ${color}80; /* Gleiche Farbe/Transparenz wie Highlight */
+mix-blend-mode: multiply; /* Optional: sieht besser aus auf Text */
+`
       });
       this.previewLayer.appendChild(el);
     }
@@ -808,6 +812,31 @@ class CleanReadEngine {
       });
     }
   }
+
+  copyHighlightText(id) {
+    if (!id) return;
+    const elements = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
+    // Wir sammeln den Text aller Marks mit dieser ID (falls es über mehrere Zeilen/Nodes geht)
+    let fullText = "";
+    elements.forEach(el => {
+      fullText += el.textContent;
+    });
+
+    this._sendToFlutter('copy_to_clipboard', { text: fullText.trim() });
+
+    // Optionaler visueller Feedback-Effekt: Kurz aufleuchten lassen
+    this._blinkFeedback(id);
+  }
+
+  _blinkFeedback(id) {
+    const elements = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
+    elements.forEach(el => {
+      const originalOpacity = el.style.opacity || "1";
+      el.style.opacity = "0.5";
+      setTimeout(() => el.style.opacity = originalOpacity, 200);
+    });
+  }
+
   updateNoteIcon(id, noteText, tagsArray) {
     const elements = document.querySelectorAll(`.${this.highlightClass}[data-id="${id}"]`);
     elements.forEach(el => {

@@ -174,6 +174,10 @@ ArticleSyncPayload? _processArticleDirectorySync(
       final metaContent = metaFile.readAsStringSync();
       final meta = ArticleMeta.fromJson(jsonDecode(metaContent));
 
+      if (meta.tags.isNotEmpty) {
+        print("Sync: Artikel ${meta.title} hat Tags: ${meta.tags}");
+      }
+
       List<ArticleNote> notes = [];
       if (notesFile.existsSync()) {
         final nContent = notesFile.readAsStringSync();

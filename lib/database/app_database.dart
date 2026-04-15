@@ -90,7 +90,7 @@ class AppDatabase extends _$AppDatabase {
 
       // A. Artikel-Tags
       for (final tag in meta.tags) {
-        await into(tagIndex).insert(
+        await into(tagIndex).insertOnConflictUpdate(
           TagIndexCompanion.insert(
             name: tag,
             articleId: meta.uuid,

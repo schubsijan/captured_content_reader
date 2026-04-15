@@ -454,7 +454,26 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
             hasNoteText ||
             hasTags; // Gilt als ausgefüllt, wenn EINS davon da ist
 
-        final highlightColor = _parseColor(h.color).withOpacity(0.4);
+        final highlightColor = _parseColor(h.color);
+
+        // --- LOGIK FÜR UNTERSTREICHUNG ODER MARKER ---
+        final bool isUnderline = h.type.toString().contains('underline');
+
+        final TextStyle highlightStyle = TextStyle(
+          fontStyle: FontStyle.italic,
+          color: Colors.black87,
+          fontSize: 13,
+          height: 1.4,
+          // Wenn Unterstreichung: Deko setzen. Wenn Marker: Hintergrund setzen.
+          decoration: isUnderline
+              ? TextDecoration.underline
+              : TextDecoration.none,
+          decorationColor: isUnderline ? highlightColor : null,
+          decorationThickness: isUnderline ? 3.0 : null,
+          backgroundColor: isUnderline
+              ? Colors.transparent
+              : highlightColor.withOpacity(0.4),
+        );
 
         items.add(
           ListTile(
@@ -462,13 +481,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
               '"$cleanText"',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontStyle: FontStyle.italic,
-                color: Colors.black87,
-                backgroundColor: highlightColor,
-                fontSize: 13,
-                height: 1.4,
-              ),
+              style: highlightStyle,
             ),
 
             // --- NEU: Notiz UND Tags rendern ---

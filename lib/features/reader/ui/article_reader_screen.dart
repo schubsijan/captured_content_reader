@@ -128,28 +128,39 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       await controller.runJavaScript(scrollJs);
 
       await controller.runJavaScript("""
-        const style = document.createElement('style');
-        style.innerHTML = `
-          .cr-highlight {
-            touch-action: manipulation;
-          }
-          .cr-highlight.has-note::before {
-            content: '';
-            display: inline-block;
-            width: 14px;
-            height: 16px;
-            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='16' viewBox='0 0 14 16'%3E%3Cpath d='M0.5,0.5 H9.5 L13.5,4.5 V15.5 H0.5 Z' fill='%23FFD54F' stroke='%23D4A719' stroke-width='1'/%3E%3Cpath d='M9.5,0.5 V4.5 H13.5' fill='%23FFE57F' stroke='%23D4A719' stroke-width='1'/%3E%3C/svg%3E");
-            background-size: contain;
-            background-repeat: no-repeat;
-            margin-right: 4px;
-            margin-left: 2px;
-            vertical-align: text-bottom;
-            position: relative;
-            top: -1px;
-          }
-        `;
-        document.head.appendChild(style);
-      """);
+const style = document.createElement('style');
+  style.innerHTML = `
+    .cr-highlight {  /* <--- Punkt hinzugefügt */
+      touch-action: manipulation; 
+      transition: background-color 0.2s;
+      position: relative; /* <--- Zwingend für ::before Positionierung */
+      display: inline;
+    }
+
+    .cr-highlight.type-underline {
+      background-color: transparent !important;
+      text-decoration: underline;
+      text-decoration-thickness: 3px;
+      text-underline-offset: 2px;
+    }
+
+    .cr-highlight.has-note::before {
+      content: '';
+      display: inline-block;
+      width: 14px;
+      height: 16px;
+      /* Das ursprüngliche Icon-SVG */
+      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='16' viewBox='0 0 14 16'%3E%3Cpath d='M0.5,0.5 H9.5 L13.5,4.5 V15.5 H0.5 Z' fill='%23FFD54F' stroke='%23D4A719' stroke-width='1'/%3E%3Cpath d='M9.5,0.5 V4.5 H13.5' fill='%23FFE57F' stroke='%23D4A719' stroke-width='1'/%3E%3C/svg%3E");
+      background-size: contain;
+      background-repeat: no-repeat;
+      position: absolute; /* <--- Absolut zum cr-highlight */
+      top: -12px;         /* Position über dem Text */
+      left: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+  `;
+  document.head.appendChild(style);     """);
 
       final RenderBox? renderBox =
           _headerKey.currentContext?.findRenderObject() as RenderBox?;

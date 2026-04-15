@@ -40,6 +40,7 @@ class HighlightService {
     String id, {
     String? newColor,
     String? newNote,
+    HighlightType? newType,
     bool clearNote = false,
     List<String>? newTags,
   }) async {
@@ -55,6 +56,7 @@ class HighlightService {
         startOffset: old.startOffset,
         endOffset: old.endOffset,
         color: newColor ?? old.color,
+        type: newType ?? old.type,
         note: clearNote ? null : (newNote ?? old.note),
         tags: newTags ?? old.tags,
       );

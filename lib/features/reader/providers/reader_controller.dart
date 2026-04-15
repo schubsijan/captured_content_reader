@@ -90,7 +90,14 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
         case 'update':
           final id = data['id'];
           final color = data['color'];
-          await highlightService.updateHighlight(id, newColor: color);
+          final typeStr = data['type'];
+          await highlightService.updateHighlight(
+            id,
+            newColor: color,
+            newType: typeStr != null
+                ? HighlightType.values.byName(typeStr)
+                : null,
+          );
           break;
         case 'edit_note':
           final id = data['id'];
@@ -114,23 +121,27 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
               ),
             );
 
+            // In case 'edit_note':
             if (result != null) {
               final newText = result.$1.trim();
               final newTags = result.$2;
-              final isNotEmpty = newText.isNotEmpty;
 
               await highlightService.updateHighlight(
                 id,
-                newNote: isNotEmpty ? newText : null,
-                clearNote: !isNotEmpty,
+                newNote: newText.isNotEmpty ? newText : null,
+                clearNote: newText.isEmpty,
                 newTags: newTags,
               );
 
-              final jsNote = isNotEmpty ? jsonEncode(newText) : 'null';
-              final jsTags = jsonEncode(newTags);
+              // WICHTIG: Übergib newTags direkt als Array-Struktur für JS
+              final jsNote = newText.isNotEmpty ? jsonEncode(newText) : 'null';
+              final jsTags = jsonEncode(newTags); // Das erzeugt "[tag1, tag2]"
+
+              print("sending updateNoteIcon");
               await state.webViewController?.runJavaScript(
                 "window.cleanReadEngine.updateNoteIcon('$id', $jsNote, $jsTags);",
               );
+
               ref.invalidate(allTagsProvider);
             }
           }

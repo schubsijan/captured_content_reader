@@ -4,7 +4,8 @@ part 'article_note.freezed.dart';
 part 'article_note.g.dart';
 
 @freezed
-class ArticleNote with _$ArticleNote {
+abstract class ArticleNote with _$ArticleNote {
+  // <--- 'abstract' hinzufügen
   const factory ArticleNote({
     required String id,
     required String content,

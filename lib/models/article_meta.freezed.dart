@@ -15,10 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ArticleMeta {
 
- String get uuid;// ID des Ordners
- String get url; String get title;// Nullable, da Parser sie vielleicht nicht findet
- String? get siteName; DateTime? get publishedAt;// Standardwerte für Arrays, damit JSON sauber bleibt
- List<String> get authors; List<String> get tags; DateTime get savedAt; bool get isRead; double get progress; String? get note;
+ String get uuid; String get url; String get title; String? get siteName; DateTime? get publishedAt; List<String> get authors; List<String> get tags; DateTime get savedAt; bool get isRead; double get progress; String? get note;
 /// Create a copy of ArticleMeta
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -226,15 +223,11 @@ class _ArticleMeta implements ArticleMeta {
   factory _ArticleMeta.fromJson(Map<String, dynamic> json) => _$ArticleMetaFromJson(json);
 
 @override final  String uuid;
-// ID des Ordners
 @override final  String url;
 @override final  String title;
-// Nullable, da Parser sie vielleicht nicht findet
 @override final  String? siteName;
 @override final  DateTime? publishedAt;
-// Standardwerte für Arrays, damit JSON sauber bleibt
  final  List<String> _authors;
-// Standardwerte für Arrays, damit JSON sauber bleibt
 @override@JsonKey() List<String> get authors {
   if (_authors is EqualUnmodifiableListView) return _authors;
   // ignore: implicit_dynamic_type

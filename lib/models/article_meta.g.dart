@@ -6,30 +6,27 @@ part of 'article_meta.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ArticleMetaImpl _$$ArticleMetaImplFromJson(Map<String, dynamic> json) =>
-    _$ArticleMetaImpl(
-      uuid: json['uuid'] as String,
-      url: json['url'] as String,
-      title: json['title'] as String,
-      siteName: json['siteName'] as String?,
-      publishedAt: json['publishedAt'] == null
-          ? null
-          : DateTime.parse(json['publishedAt'] as String),
-      authors:
-          (json['authors'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          const [],
-      tags:
-          (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
-          const [],
-      savedAt: DateTime.parse(json['savedAt'] as String),
-      isRead: json['isRead'] as bool? ?? false,
-      progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
-      note: json['note'] as String?,
-    );
+_ArticleMeta _$ArticleMetaFromJson(Map<String, dynamic> json) => _ArticleMeta(
+  uuid: json['uuid'] as String,
+  url: json['url'] as String,
+  title: json['title'] as String,
+  siteName: json['siteName'] as String?,
+  publishedAt: json['publishedAt'] == null
+      ? null
+      : DateTime.parse(json['publishedAt'] as String),
+  authors:
+      (json['authors'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+  tags:
+      (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+  savedAt: DateTime.parse(json['savedAt'] as String),
+  isRead: json['isRead'] as bool? ?? false,
+  progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
+  note: json['note'] as String?,
+);
 
-Map<String, dynamic> _$$ArticleMetaImplToJson(_$ArticleMetaImpl instance) =>
+Map<String, dynamic> _$ArticleMetaToJson(_ArticleMeta instance) =>
     <String, dynamic>{
       'uuid': instance.uuid,
       'url': instance.url,

@@ -6,17 +6,16 @@ part of 'article_note.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ArticleNoteImpl _$$ArticleNoteImplFromJson(Map<String, dynamic> json) =>
-    _$ArticleNoteImpl(
-      id: json['id'] as String,
-      content: json['content'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      tags:
-          (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
-          const [],
-    );
+_ArticleNote _$ArticleNoteFromJson(Map<String, dynamic> json) => _ArticleNote(
+  id: json['id'] as String,
+  content: json['content'] as String,
+  createdAt: DateTime.parse(json['createdAt'] as String),
+  tags:
+      (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+);
 
-Map<String, dynamic> _$$ArticleNoteImplToJson(_$ArticleNoteImpl instance) =>
+Map<String, dynamic> _$ArticleNoteToJson(_ArticleNote instance) =>
     <String, dynamic>{
       'id': instance.id,
       'content': instance.content,

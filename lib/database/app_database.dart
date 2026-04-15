@@ -26,26 +26,21 @@ class AppDatabase extends _$AppDatabase {
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
-          // Wir fügen die Spalte hinzu.
           await m.addColumn(articles, articles.fileLastModified);
         }
         if (from < 3) {
-          // <--- NEU: Migration für Version 3
           await m.addColumn(articles, articles.authors);
         }
         if (from < 4) {
-          // <--- NEU: Migration für Version 4
           await m.addColumn(articles, articles.note);
         }
         if (from < 5) {
           await m.createTable(articleNotes);
         }
         if (from < 6) {
-          // <--- NEU
           await m.addColumn(articleNotes, articleNotes.tags);
         }
         if (from < 7) {
-          // Spalte origin hinzufügen
           await m.addColumn(tagIndex, tagIndex.origin);
         }
         if (from < 8) {
@@ -57,7 +52,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   // --- Core Logic: Re-Indexing ---
-  // Diese Funktion macht die DB synchron mit der meta.json (File-First!)
+  // Diese Funktion synchronisiert die DB mit dem Dateisystem (Source of Truth).
   Future<void> indexArticle(
     ArticleMeta meta,
     DateTime fileModified, {
@@ -82,13 +77,20 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
+      // 2. Bestehende Verknüpfungen löschen, um Dubletten oder verwaiste Tags zu vermeiden
       await (delete(
         tagIndex,
+      )..where((t) => t.articleId.equals(meta.uuid))).go();
+      await (delete(
+        authorIndex,
+      )..where((t) => t.articleId.equals(meta.uuid))).go();
+      await (delete(
+        articleNotes,
       )..where((t) => t.articleId.equals(meta.uuid))).go();
 
       // 3. Tags nach Herkunft getrennt speichern
 
-      // A. Artikel-Tags
+      // A. Tags aus der meta.json (Eigentliche Artikel-Tags)
       for (final tag in meta.tags) {
         await into(tagIndex).insertOnConflictUpdate(
           TagIndexCompanion.insert(
@@ -99,7 +101,7 @@ class AppDatabase extends _$AppDatabase {
         );
       }
 
-      // B. Tags aus Notizen
+      // B. Tags aus Notizen extrahieren
       for (final n in notes) {
         for (final tag in n.tags) {
           await into(tagIndex).insertOnConflictUpdate(
@@ -112,7 +114,7 @@ class AppDatabase extends _$AppDatabase {
         }
       }
 
-      // C. Tags aus Highlights
+      // C. Tags aus Highlights extrahieren
       for (final h in highlights) {
         for (final tag in h.tags) {
           await into(tagIndex).insertOnConflictUpdate(
@@ -125,20 +127,14 @@ class AppDatabase extends _$AppDatabase {
         }
       }
 
-      // 3. Autoren bereinigen und neu setzen
-      await (delete(
-        authorIndex,
-      )..where((t) => t.articleId.equals(meta.uuid))).go();
-
+      // 4. Autoren-Index neu aufbauen
       for (final author in meta.authors) {
         await into(authorIndex).insert(
           AuthorIndexCompanion.insert(name: author, articleId: meta.uuid),
         );
       }
 
-      await (delete(
-        articleNotes,
-      )..where((t) => t.articleId.equals(meta.uuid))).go();
+      // 5. Notizen-Index neu aufbauen
       for (final note in notes) {
         await into(articleNotes).insert(
           ArticleNotesCompanion.insert(
@@ -146,13 +142,14 @@ class AppDatabase extends _$AppDatabase {
             articleId: meta.uuid,
             content: note.content,
             createdAt: note.createdAt,
-            tags: Value(jsonEncode(note.tags)), // <--- NEU
+            tags: Value(jsonEncode(note.tags)),
           ),
         );
       }
     });
   }
 
+  // Hilfsmethode für Autocomplete/Filter-Listen
   Future<List<String>> getAllTags() async {
     final query = selectOnly(tagIndex, distinct: true)
       ..addColumns([tagIndex.name]);
@@ -160,6 +157,7 @@ class AppDatabase extends _$AppDatabase {
     return results.map((row) => row.read(tagIndex.name)!).toList();
   }
 
+  // Stream für die UI (ArticleMetaDisplay)
   Stream<List<String>> watchTagsForArticle(String articleId) {
     final query = select(tagIndex)
       ..where((t) => t.articleId.equals(articleId))
@@ -167,6 +165,7 @@ class AppDatabase extends _$AppDatabase {
     return query.watch().map((rows) => rows.map((r) => r.name).toList());
   }
 
+  // Spezial-Sync für Artikelnotizen (wird von NoteService genutzt)
   Future<void> syncNotes(String articleId, List<ArticleNote> notes) async {
     return transaction(() async {
       await (delete(
@@ -179,6 +178,7 @@ class AppDatabase extends _$AppDatabase {
             articleId: articleId,
             content: note.content,
             createdAt: note.createdAt,
+            tags: Value(jsonEncode(note.tags)),
           ),
         );
       }
@@ -190,6 +190,7 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'cleanread_index.sqlite'));
+    // Nutzt Hintergrund-Isolate für bessere UI-Performance
     return NativeDatabase.createInBackground(file);
   });
 }

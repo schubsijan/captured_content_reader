@@ -1,74 +1,55 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
+import 'package:permission_handler/permission_handler.dart';
 
 class StorageService {
-  static const String _appFolderName = 'CapturedContentReaderData';
+  static const String _prefsKey = 'custom_storage_path';
 
-  /// Initialisiert den Zugriff und erstellt den Basis-Ordner.
-  /// Gibt false zurück, wenn Berechtigungen fehlen.
+  /// Initialer Permission-Check für das Onboarding
   Future<bool> init() async {
     if (Platform.isAndroid) {
-      // Prüfen auf Manage External Storage (Android 11+)
-      if (await Permission.manageExternalStorage.request().isGranted) {
-        return await _ensureDirectoryExists();
-      }
-      // Fallback für ältere Android Versionen
-      else if (await Permission.storage.request().isGranted) {
-        return await _ensureDirectoryExists();
-      }
+      if (await Permission.manageExternalStorage.request().isGranted)
+        return true;
+      if (await Permission.storage.request().isGranted) return true;
     }
-    return false;
+    return Platform.isLinux; // Auf Linux gehen wir von Zugriff aus
   }
 
-  /// Ermittelt den Pfad zum öffentlichen Documents Ordner.
-  /// Wir nutzen nicht getApplicationDocumentsDirectory(), da dies privat ist.
-  Future<Directory> get _publicDocDir async {
-    if (Platform.isAndroid) {
-      // Hack/Standardweg um auf /storage/emulated/0/Documents zu kommen
-      // path_provider gibt uns oft nur die Sandbox.
-      Directory? extDir = await getExternalStorageDirectory();
-      // extDir ist typischerweise: /storage/emulated/0/Android/data/com.app/files
-      // Wir wollen aber: /storage/emulated/0/Documents/CapturedContentReaderData
+  /// Der eigentliche Ordner-Picker
+  Future<String?> pickDirectory() async {
+    String? selectedPath = await FilePicker.platform.getDirectoryPath();
+    print("Picker Result: $selectedPath"); // Prüfe das in der Konsole!
 
-      if (extDir != null) {
-        // Wir schneiden den Pfad ab, bis wir bei '0' (root user storage) sind
-        // Das ist etwas fragil, aber gängige Praxis für File-Manager-artige Apps
-        final List<String> paths = extDir.path.split('/');
-        String newPath = '';
-        for (String folder in paths) {
-          if (folder == 'Android') break;
-          newPath += '$folder/';
-        }
-        return Directory(p.join(newPath, 'Documents'));
-      }
+    if (selectedPath != null) {
+      // Falls der Pfad auf Android mit "content://" beginnt, haben wir ein Problem.
+      // Normalerweise sollte file_picker das auflösen, außer bei speziellen Ordnern.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, selectedPath);
+      return selectedPath;
     }
-    // Fallback (z.B. Linux später, oder wenn oben fehlschlägt)
-    return await getApplicationDocumentsDirectory();
+    return null;
   }
 
-  Future<bool> _ensureDirectoryExists() async {
-    try {
-      final docDir = await _publicDocDir;
-      final appDir = Directory(p.join(docDir.path, _appFolderName));
-
-      if (!await appDir.exists()) {
-        await appDir.create(recursive: true);
-        print('Root Directory created at: ${appDir.path}');
-      } else {
-        print('Root Directory found at: ${appDir.path}');
-      }
-      return true;
-    } catch (e) {
-      print('Error creating directory: $e');
-      return false;
-    }
-  }
-
-  /// Gibt den Root-Ordner der App zurück (~/Documents/ReadItLater)
+  /// Liefert das Verzeichnis für die Artikel
   Future<Directory> getAppDirectory() async {
-    final docDir = await _publicDocDir;
-    return Directory(p.join(docDir.path, _appFolderName));
+    final prefs = await SharedPreferences.getInstance();
+    final savedPath = prefs.getString(_prefsKey);
+
+    if (savedPath != null) {
+      final dir = Directory(savedPath);
+      if (await dir.exists()) return dir;
+    }
+
+    // Fallback falls kein Pfad gewählt wurde (sollte nach Onboarding nicht passieren)
+    final docDir = await getApplicationDocumentsDirectory();
+    return Directory(p.join(docDir.path, 'CleanReadData'));
   }
 }
+
+final storageServiceProvider = Provider<StorageService>(
+  (ref) => StorageService(),
+);

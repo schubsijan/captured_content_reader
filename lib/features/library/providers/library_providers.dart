@@ -44,16 +44,6 @@ final singleArticleProvider = StreamProvider.family<Article?, String>((
   )..where((t) => t.id.equals(id))).watchSingleOrNull();
 });
 
-final storageServiceProvider = Provider<StorageService>(
-  (ref) => StorageService(),
-);
-
-final librarySyncServiceProvider = Provider<LibrarySyncService>((ref) {
-  final db = ref.watch(databaseProvider);
-  final storage = ref.watch(storageServiceProvider);
-  return LibrarySyncService(storage, db);
-});
-
 final allTagsProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.getAllTags();

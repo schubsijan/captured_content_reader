@@ -6,6 +6,8 @@ import 'package:captured_content_reader/services/storage_access.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/android_utils.dart';
+
 // GLOBALER STATUS:
 // true = Die App läuft nur temporär für diesen Import (Szenario 2)
 // false = Die App läuft "echt" als Bibliothek (Szenario 1 & 3)

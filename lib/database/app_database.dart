@@ -128,8 +128,8 @@ class AppDatabase extends _$AppDatabase {
       }
 
       // 4. Autoren-Index neu aufbauen
-      for (final author in meta.authors) {
-        await into(authorIndex).insert(
+      for (final author in meta.authors.toSet()) {
+        await into(authorIndex).insertOnConflictUpdate(
           AuthorIndexCompanion.insert(name: author, articleId: meta.uuid),
         );
       }

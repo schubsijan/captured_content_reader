@@ -1,5 +1,6 @@
 import 'package:captured_content_reader/features/shared/ui/article_actions.dart';
 import 'package:captured_content_reader/features/shared/ui/article_meta_display.dart';
+import 'package:captured_content_reader/services/library_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/library_providers.dart';
@@ -13,14 +14,6 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(librarySyncServiceProvider).syncFileSystemToDatabase();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     // 1. Welcher Filter ist aktiv?

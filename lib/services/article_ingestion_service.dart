@@ -13,10 +13,10 @@ class ArticleIngestionService {
 
   ArticleIngestionService(this._storage, this._db);
 
-  /// Nimmt eine rohe HTML Datei (Download), extrahiert Metadaten,
-  /// verschiebt sie in die Ordnerstruktur und indexiert sie.
-  /// Gibt die ArticleID zurück.
-  Future<String> ingestDownloadedFile(File tempFile) async {
+  Future<String> ingestDownloadedFile(
+    File tempFile, {
+    String? overrideTargetPath, // Neu: Optionaler Override
+  }) async {
     // 1. HTML Parsen & Metadaten extrahieren
     final String content = await tempFile.readAsString();
     final doc = html_parser.parse(content);
@@ -36,8 +36,10 @@ class ArticleIngestionService {
     // 2. UUID generieren & Ordner vorbereiten
     final String articleId = const Uuid().v4();
 
-    final appDir = await _storage.getAppDirectory();
-    final articleDir = Directory(p.join(appDir.path, articleId));
+    final String basePath =
+        overrideTargetPath ?? (await _storage.getAppDirectory()).path;
+    final articleDir = Directory(p.join(basePath, articleId));
+
     await articleDir.create(recursive: true);
 
     // 3. ArticleMeta Objekt bauen (Merging mit Defaults)

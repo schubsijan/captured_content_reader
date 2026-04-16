@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:captured_content_reader/main.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../database/app_database.dart';
 import '../models/article_meta.dart';
@@ -38,6 +40,12 @@ class LibrarySyncService {
     final Stopwatch stopwatch = Stopwatch()..start();
 
     final appDir = await _storage.getAppDirectory();
+    print("Sync startet für Pfad: ${appDir.path}");
+
+    if (!appDir.existsSync()) {
+      print("FEHLER: Pfad existiert nicht im Dateisystem!");
+      return;
+    }
 
     // ENTFERNT: if (!await appDir.exists()) return;
 
@@ -56,12 +64,17 @@ class LibrarySyncService {
     int updatedCount = syncResult.toUpdate.length;
 
     for (final payload in syncResult.toUpdate) {
-      await _db.indexArticle(
-        payload.meta,
-        payload.maxModified,
-        notes: payload.notes,
-        highlights: payload.highlights,
-      );
+      try {
+        await _db.indexArticle(
+          payload.meta,
+          payload.maxModified,
+          notes: payload.notes,
+          highlights: payload.highlights,
+        );
+      } catch (e) {
+        // Wenn ein Artikel korrupt ist, loggen wir das, machen aber mit dem nächsten weiter
+        print("Überspringe Artikel ${payload.meta.uuid} wegen DB-Fehler: $e");
+      }
     }
 
     if (syncResult.toDelete.isNotEmpty) {
@@ -201,3 +214,9 @@ ArticleSyncPayload? _processArticleDirectorySync(
   }
   return null;
 }
+
+final librarySyncServiceProvider = Provider<LibrarySyncService>((ref) {
+  final storage = ref.watch(storageServiceProvider);
+  final db = ref.watch(databaseProvider); // Kommt aus main.dart
+  return LibrarySyncService(storage, db);
+});

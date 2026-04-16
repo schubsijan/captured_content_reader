@@ -1,178 +1,102 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
-import 'package:captured_content_reader/services/storage_access.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:captured_content_reader/database/app_database.dart';
-import 'package:captured_content_reader/services/article_ingestion_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:captured_content_reader/database/app_database.dart';
+import 'package:captured_content_reader/services/article_ingestion_service.dart';
+import 'package:captured_content_reader/services/storage_access.dart';
 
-// WICHTIG: Neue IDs, damit Android die Settings neu lädt!
-const statusChannelId = 'import_status_v5';
-const successChannelId = 'import_success_v5';
-
-const notificationId = 888;
-const successNotificationId = 889;
-
-Future<void> initializeBackgroundService() async {
-  if (!Platform.isAndroid && !Platform.isIOS) {
-    return;
-  }
-  final service = FlutterBackgroundService();
-  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-
-  // 1. Channel für den laufenden Service (ruhig)
-  const AndroidNotificationChannel statusChannel = AndroidNotificationChannel(
-    statusChannelId,
-    'Import Status',
-    description: 'Zeigt an, dass auf einen Download gewartet wird',
-    importance: Importance.low, // Soll nicht bimmeln, nur da sein
-  );
-
-  // 2. Channel für den Erfolg (LAUT & POP-UP)
-  const AndroidNotificationChannel successChannel = AndroidNotificationChannel(
-    successChannelId,
-    'Import Erfolg',
-    description: 'Benachrichtigung bei erfolgreichem Import',
-    importance: Importance.max, // WICHTIG: Max für Heads-Up (Pop-up)
-    playSound: true,
-    enableVibration: true,
-  );
-
-  // Beide Channels erstellen
-  var androidPlugin = flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin
-      >();
-
-  await androidPlugin?.createNotificationChannel(statusChannel);
-  await androidPlugin?.createNotificationChannel(successChannel);
-
-  await service.configure(
-    androidConfiguration: AndroidConfiguration(
-      onStart: onStart,
-      isForegroundMode: true,
-      autoStart: false,
-      notificationChannelId:
-          statusChannelId, // Service nutzt den ruhigen Channel
-      initialNotificationTitle: 'CleanRead',
-      initialNotificationContent: 'Bereit...',
-      foregroundServiceNotificationId: notificationId,
-    ),
-    iosConfiguration: IosConfiguration(),
-  );
-}
+const String channelId = 'import_status_v5';
+const String successChannelId = 'import_success_v5';
+const int notificationId = 888;
+const int successNotificationId = 889;
 
 @pragma('vm:entry-point')
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  print("!!! ISOLATE BOOT SEQUENCE START !!!");
 
   final localNav = FlutterLocalNotificationsPlugin();
 
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
-
-  const InitializationSettings initializationSettings = InitializationSettings(
-    android: initializationSettingsAndroid,
-  );
-
+  // Wichtig: Initialisierung innerhalb von onStart für das Isolate
   await localNav.initialize(
-    settings: initializationSettings, // <--- "settings:" wichtig
+    settings: const InitializationSettings(
+      // <--- 'settings:' hinzufügen
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
   );
-
-  final storageService = StorageService();
-
-  service.on('start_watching').listen((event) async {
-    if (event == null) return;
-    final String fileName = event['fileName'];
-
-    // "Warte..." Notification auf dem STATUS Channel (Low Prio)
-    await localNav.show(
-      id: notificationId,
-      title: 'Warte auf Download...',
-      body: 'Suche nach: $fileName',
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          statusChannelId, // <--- Ruhiger Channel
-          'Import Status',
-          importance: Importance.low,
-          priority: Priority.low,
-          ongoing: true,
-          indeterminate: true,
-          category: AndroidNotificationCategory.service,
-        ),
-      ),
-    );
-
-    _pollFile(fileName, service, localNav, storageService);
-  });
 
   service.on('stop_service').listen((event) {
     service.stopSelf();
+  });
+
+  service.on('start_watching').listen((event) {
+    print("!!! EVENT ERHALTEN IM HINTERGRUND: $event !!!");
+    if (event == null) return;
+
+    final String fileName = event['fileName'];
+    final String sourcePath =
+        event['sourcePath'] ?? '/storage/emulated/0/Download';
+    final String targetPath = event['targetPath'];
+
+    // Wir nutzen try-catch hier, um Fehler beim Aufruf zu fangen
+    try {
+      _pollFile(fileName, sourcePath, targetPath, service, localNav);
+    } catch (e) {
+      print("!!! FEHLER BEIM START VON POLLFILE: $e !!!");
+    }
+  });
+  Timer.periodic(const Duration(seconds: 10), (t) {
+    print("!!! BACKGROUND HEARTBEAT !!!");
   });
 }
 
 Future<void> _pollFile(
   String fileName,
+  String sourcePath,
+  String targetPath,
   ServiceInstance service,
   FlutterLocalNotificationsPlugin localNav,
-  StorageService storageService,
 ) async {
-  Directory? downloadDir;
-  if (Platform.isAndroid) {
-    // path_provider Funktion für externe Downloads
-    downloadDir = await getExternalStorageDirectory();
-    // Fallback Logik, falls getExternalStorageDirectory null liefert
-    if (downloadDir != null) {
-      final paths = downloadDir.path.split('/');
-      final rootPath = paths.sublist(0, paths.indexOf('Android')).join('/');
-      downloadDir = Directory('$rootPath/Download');
-    }
-  }
+  print("!!! POLLFILE FUNKTION GESTARTET !!!");
 
-  if (downloadDir == null || !await downloadDir.exists()) {
-    service.stopSelf();
-    return;
-  }
+  // Wir bauen den Pfad manuell, um path_provider/p.join zu vermeiden,
+  // falls diese Pakete Probleme machen
+  final fullPath = sourcePath.endsWith('/')
+      ? '$sourcePath$fileName'
+      : '$sourcePath/$fileName';
+  final sourceFile = File(fullPath);
 
-  final targetFile = File(p.join(downloadDir.path, fileName));
+  print("!!! SUCHE DATEI UNTER: $fullPath !!!");
 
   int attempts = 0;
-  const int maxAttempts = 600;
+  const int maxAttempts = 120;
 
   Timer.periodic(const Duration(seconds: 1), (timer) async {
     attempts++;
+    print(
+      "!!! POLL ATTEMPT $attempts - Exists: ${sourceFile.existsSync()} !!!",
+    );
 
     if (attempts > maxAttempts) {
       timer.cancel();
-      // Fehler auch auf dem Success Channel (damit man es mitbekommt)
-      await localNav.show(
-        id: notificationId,
-        title: 'Fehler',
-        body: 'Zeitüberschreitung beim Download.',
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            successChannelId,
-            'Import Erfolg',
-            importance: Importance.high,
-          ),
-        ),
-      );
+      print("!!! POLL TIMEOUT !!!");
       service.stopSelf();
       return;
     }
 
-    if (await targetFile.exists()) {
-      int size1 = await targetFile.length();
-      await Future.delayed(const Duration(milliseconds: 500));
-      int size2 = await targetFile.length();
+    if (sourceFile.existsSync()) {
+      print("!!! DATEI GEFUNDEN !!!");
+      timer.cancel();
 
-      if (size1 > 0 && size1 == size2) {
-        timer.cancel();
-        await _processImport(targetFile, localNav, service, storageService);
+      // Erst hier rufen wir die schwere Logik auf
+      try {
+        await _processImport(sourceFile, targetPath, localNav, service);
+      } catch (e) {
+        print("!!! FEHLER IN _processImport: $e !!!");
       }
     }
   });
@@ -180,45 +104,95 @@ Future<void> _pollFile(
 
 Future<void> _processImport(
   File file,
+  String targetPath,
   FlutterLocalNotificationsPlugin localNav,
   ServiceInstance service,
-  StorageService storageService,
 ) async {
   try {
-    // 1. Instanzen erzeugen (im Background Isolate)
     final db = AppDatabase();
+    final storageService = StorageService();
     final ingestionService = ArticleIngestionService(storageService, db);
 
-    // 2. Die ganze Magie passiert jetzt hier sauber gekapselt
-    final String articleId = await ingestionService.ingestDownloadedFile(file);
+    // Wir nutzen die Ingest-Logik, die wir bereits angepasst haben
+    final String articleId = await ingestionService.ingestDownloadedFile(
+      file,
+      overrideTargetPath: targetPath,
+    );
 
-    // DB Verbindung schließen, da wir im Background fertig sind
     await db.close();
+
+    // Event zurück an die Main App (für UI Refresh)
     service.invoke('import_success', {'articleId': articleId});
 
-    // 3. Notification (bleibt wie vorher, nur sauberer)
+    // Erfolgs-Notification
+    const androidDetails = AndroidNotificationDetails(
+      successChannelId,
+      'Import Erfolg',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+
+    // lib/services/background.dart -> _processImport
+
     await localNav.show(
-      id: successNotificationId,
-      title: 'Import erfolgreich!',
-      body: 'Tippe zum Öffnen.',
-      notificationDetails: NotificationDetails(
+      id: successNotificationId, // Named parameter 'id'
+      title: 'Import erfolgreich!', // Named parameter 'title'
+      body: 'Der Artikel wurde hinzugefügt.', // Named parameter 'body'
+      notificationDetails: const NotificationDetails(
+        // Named parameter
         android: AndroidNotificationDetails(
           successChannelId,
           'Import Erfolg',
           importance: Importance.max,
-          priority: Priority.max,
-          playSound: false,
-          enableVibration: false,
-          timeoutAfter: 5000,
+          priority: Priority.high,
         ),
       ),
       payload: articleId,
     );
   } catch (e) {
     print("Background Ingestion Error: $e");
-    // Fehler Notification wäre hier gut
   } finally {
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(seconds: 2));
     service.stopSelf();
   }
+}
+
+Future<void> initializeBackgroundService() async {
+  final service = FlutterBackgroundService();
+  final localNav = FlutterLocalNotificationsPlugin();
+
+  // Beide Channels erstellen
+  const channels = [
+    AndroidNotificationChannel(
+      channelId,
+      'Import Status',
+      importance: Importance.low,
+    ),
+    AndroidNotificationChannel(
+      successChannelId,
+      'Import Erfolg',
+      importance: Importance.max,
+    ),
+  ];
+
+  for (var channel in channels) {
+    await localNav
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(channel);
+  }
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: false,
+      isForegroundMode: true,
+      notificationChannelId: channelId,
+      initialNotificationTitle: 'CleanRead aktiv',
+      initialNotificationContent: 'Bereit für Import...',
+      foregroundServiceNotificationId: notificationId,
+    ),
+    iosConfiguration: IosConfiguration(),
+  );
 }

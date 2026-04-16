@@ -1,193 +1,83 @@
-import 'package:captured_content_reader/services/background.dart';
-import 'package:captured_content_reader/services/import_starter.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:captured_content_reader/database/app_database.dart';
-import 'package:captured_content_reader/features/library/ui/library_screen.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
-import 'package:captured_content_reader/features/reader/ui/article_reader_screen.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:captured_content_reader/features/library/providers/library_providers.dart';
 
+import 'package:captured_content_reader/services/background_manager.dart';
+import 'package:captured_content_reader/services/notification_service.dart';
+// WICHTIG: Importiere die background.dart, damit initializeBackgroundService bekannt ist
+import 'package:captured_content_reader/services/background.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:captured_content_reader/database/app_database.dart';
+import 'package:captured_content_reader/features/onboarding/providers/app_startup_provider.dart';
+import 'package:captured_content_reader/features/onboarding/ui/onboarding_screen.dart';
+import 'package:captured_content_reader/features/library/ui/library_screen.dart';
+import 'package:captured_content_reader/navigation/navigation_handler.dart';
+
+// Dein db/connect.go Äquivalent
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   ref.onDispose(() => db.close());
   return db;
 });
 
-class AndroidUtils {
-  static const _platform = MethodChannel(
-    'com.example.captured_content_reader/android',
-  );
-
-  static Future<void> minimizeApp() async {
-    try {
-      await _platform.invokeMethod('minimizeApp');
-    } catch (e) {
-      print("Minimize Error: $e");
-    }
-  }
-
-  static Future<void> closeAppCompletely() async {
-    try {
-      await _platform.invokeMethod('finishAndRemoveTask');
-    } catch (e) {
-      SystemNavigator.pop();
-    }
-  }
-}
-
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ),
-  );
+
+  // Wir erstellen den Container manuell
+  final container = ProviderContainer();
+
+  // WICHTIG: Den Service NICHT awaiten, bevor runApp startet,
+  // oder sicherstellen, dass die Navigation erst später triggert.
+  // Wir starten die Initialisierung parallel zum App-Build.
+  container.read(notificationServiceProvider).init();
 
   if (Platform.isAndroid || Platform.isIOS) {
     await initializeBackgroundService();
-  } else if (Platform.isLinux) {
-    print("Linux erkannt: Starte HTTP Server Modus...");
+    FlutterBackgroundService().startService();
   }
 
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(
+    // WICHTIG: UncontrolledProviderScope nutzen, um unseren container zu übergeben
+    UncontrolledProviderScope(
+      container: container,
+      child: const CleanReadApp(),
+    ),
+  );
 }
 
-class MyApp extends ConsumerStatefulWidget {
-  const MyApp({super.key});
+class CleanReadApp extends ConsumerWidget {
+  const CleanReadApp({super.key});
 
   @override
-  ConsumerState<MyApp> createState() => _MyAppState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    // INITIALISIERUNG DER GLOBALEN HANDLER
+    ref.watch(navigationHandlerProvider);
+    ref.watch(backgroundManagerProvider);
 
-class _MyAppState extends ConsumerState<MyApp> {
-  final ImportStarter _importStarter = ImportStarter();
-  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+    final startupState = ref.watch(appStartupProvider);
+    final navKey = ref.watch(navigatorKeyProvider);
 
-  // Steuert, ob wir den weißen Hintergrund (Bibliothek) sehen
-  // Startet false (transparent), damit Deep-Link Imports im Hintergrund laufen können.
-  bool _showMainUI = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initApp();
-    _listenToBackgroundImports();
-  }
-
-  // Der Listener für Isolate-Kommunikation
-  void _listenToBackgroundImports() {
-    FlutterBackgroundService().on('import_success').listen((event) {
-      print("Main UI: Import Event empfangen! Lade Bibliothek neu...");
-      // Nur wenn wirklich ein Import stattfand, wird der Stream refresht
-      ref.invalidate(unreadArticlesProvider);
-
-      // Einen Smart-Sync anstoßen, damit auch das FileSystem sync ist
-      ref.read(librarySyncServiceProvider).syncFileSystemToDatabase();
-    });
-  }
-
-  void _initApp() async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      await Permission.notification.request();
-      _initLocalNotifications();
-
-      // Check: Wurde App durch Benachrichtigung gestartet?
-      final notifLaunchDetails = await flutterLocalNotificationsPlugin
-          .getNotificationAppLaunchDetails();
-
-      if (notifLaunchDetails?.didNotificationLaunchApp == true) {
-        final payload = notifLaunchDetails!.notificationResponse?.payload;
-        if (payload != null) {
-          // Direkt zum Artikel navigieren
-          Future.delayed(Duration.zero, () => _openArticle(payload));
-        }
-        // Import Service initialisieren, aber UI Logik ist durch Notification erledigt
-        _importStarter.init(onCheckComplete: null);
-        return;
-      }
-    }
-
-    if (Platform.isLinux) {
-      setState(() {
-        _showMainUI = true;
-      });
-    }
-
-    // CHECK: Normaler Start oder Deep Link (Browser Share)?
-    _importStarter.init(
-      onCheckComplete: (foundLink) {
-        if (foundLink) {
-          // Szenario 2: Browser Link -> App bleibt transparent/unsichtbar während Import
-        } else {
-          // Szenario 1: Normaler Start -> Bibliothek anzeigen
-          if (mounted) {
-            setState(() {
-              _showMainUI = true;
-            });
-          }
-        }
-      },
-    );
-  }
-
-  void _initLocalNotifications() {
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings initializationSettings =
-        InitializationSettings(android: initializationSettingsAndroid);
-
-    flutterLocalNotificationsPlugin.initialize(
-      settings: initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (response.payload != null) {
-          _openArticle(response.payload!);
-        }
-      },
-    );
-  }
-
-  void _openArticle(String articleId) {
-    // 1. App sichtbar machen (falls sie transparent war)
-    if (!_showMainUI) {
-      setState(() {
-        _showMainUI = true;
-      });
-    }
-
-    // 2. Zum Reader navigieren
-    navigatorKey.currentState?.push(
-      MaterialPageRoute(
-        builder: (context) => ArticleReaderScreen(articleId: articleId),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'CleanRead',
-      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
+      navigatorKey: navKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true,
-        // Wenn _showMainUI false ist, ist der Hintergrund transparent (sieht aus wie geschlossen)
-        scaffoldBackgroundColor: _showMainUI
-            ? Colors.white
-            : Colors.transparent,
+        scaffoldBackgroundColor: Colors.white,
       ),
-      home: _showMainUI
-          ? const LibraryScreen()
-          : const Scaffold(backgroundColor: Colors.transparent),
+      home: _buildHome(startupState),
     );
+  }
+
+  Widget _buildHome(AppStartupState state) {
+    switch (state) {
+      case AppStartupState.loading:
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      case AppStartupState.onboarding:
+        return const OnboardingScreen();
+      case AppStartupState.library:
+        return const LibraryScreen();
+    }
   }
 }

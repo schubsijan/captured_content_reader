@@ -10,7 +10,7 @@ class ArticleActions {
     WidgetRef ref,
     Article article, // 'dynamic' oder der generierte 'Article' Typ
   ) {
-    final bool currentStatus = article.isRead;
+    final bool currentStatus = article.readAt != null;
     final bool newStatus = !currentStatus;
     final String feedbackText = newStatus ? "Archiviert" : "Wiederhergestellt";
 

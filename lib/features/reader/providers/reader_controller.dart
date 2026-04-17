@@ -10,6 +10,7 @@ import '../../../main.dart'; // für databaseProvider
 import '../../../models/highlight.dart';
 import '../../library/providers/library_providers.dart';
 import '../../shared/ui/plain_text_note_dialog.dart';
+import '../../tags/providers/tag_providers.dart';
 import '../services/article_note_service.dart';
 import '../services/highlight_service.dart';
 
@@ -87,6 +88,7 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
         case 'create':
           final highlight = Highlight.fromJson(data);
           await highlightService.addHighlight(highlight);
+          ref.invalidate(tagListProvider);
           break;
         case 'update':
           final id = data['id'];
@@ -144,11 +146,13 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
               );
 
               ref.invalidate(allTagsProvider);
+              ref.invalidate(tagListProvider);
             }
           }
           break;
         case 'delete':
           await highlightService.deleteHighlight(data['id']);
+          ref.invalidate(tagListProvider);
           break;
         case 'copy_to_clipboard':
           final String textToCopy = data['text'];
@@ -174,3 +178,5 @@ class ReaderController extends AutoDisposeFamilyNotifier<ReaderState, String> {
 
 final readerControllerProvider = NotifierProvider.autoDispose
     .family<ReaderController, ReaderState, String>(ReaderController.new);
+
+final scrollToNoteIdProvider = StateProvider<String?>((ref) => null);

@@ -10,8 +10,8 @@ class Articles extends Table {
   DateTimeColumn get publishedAt => dateTime().nullable()();
   DateTimeColumn get savedAt => dateTime()();
 
-  // Status (Redundanz zur JSON für schnelle Filter "Ungelesen")
-  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
+  // Status (null = unread, timestamp = readAt)
+  DateTimeColumn get readAt => dateTime().nullable()();
   RealColumn get progress => real().withDefault(const Constant(0.0))();
 
   DateTimeColumn get fileLastModified => dateTime().nullable()();

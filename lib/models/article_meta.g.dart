@@ -13,7 +13,7 @@ _ArticleMeta _$ArticleMetaFromJson(Map<String, dynamic> json) => _ArticleMeta(
   siteName: json['siteName'] as String?,
   publishedAt: json['publishedAt'] == null
       ? null
-      : DateTime.parse(json['publishedAt'] as String),
+      : DateTime.tryParse(json['publishedAt'] as String? ?? ''),
   authors:
       (json['authors'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const [],
@@ -21,7 +21,12 @@ _ArticleMeta _$ArticleMetaFromJson(Map<String, dynamic> json) => _ArticleMeta(
       (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const [],
   savedAt: DateTime.parse(json['savedAt'] as String),
-  isRead: json['isRead'] as bool? ?? false,
+  // Migration: Wenn readAt fehlt aber isRead=true, setze readAt auf savedAt (mit Fehlerbehandlung)
+  readAt: json['readAt'] != null
+      ? DateTime.tryParse(json['readAt'] as String? ?? '')
+      : (json['isRead'] == true
+          ? (DateTime.tryParse(json['savedAt'] as String? ?? '') ?? DateTime.now())
+          : null),
   progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
   note: json['note'] as String?,
 );
@@ -36,7 +41,11 @@ Map<String, dynamic> _$ArticleMetaToJson(_ArticleMeta instance) =>
       'authors': instance.authors,
       'tags': instance.tags,
       'savedAt': instance.savedAt.toIso8601String(),
+      // Rückwärtskompatibilität: isRead als bool speichern
       'isRead': instance.isRead,
+      // readAt speichern (oder now wenn isRead true aber readAt null - sollte nicht passieren)
+      'readAt': instance.readAt?.toIso8601String() ??
+          (instance.isRead ? DateTime.now().toIso8601String() : null),
       'progress': instance.progress,
       'note': instance.note,
     };

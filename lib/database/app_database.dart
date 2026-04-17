@@ -16,7 +16,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration {
@@ -47,6 +47,25 @@ class AppDatabase extends _$AppDatabase {
           await m.drop(tagIndex);
           await m.createTable(tagIndex);
         }
+        if (from < 9) {
+          // isRead (bool) -> readAt (DateTime nullable)
+          final tableInfo = await customSelect(
+            "PRAGMA table_info(articles)",
+          ).get();
+          final hasIsRead = tableInfo.any((row) => row.data['name'] == 'is_read');
+          final hasReadAt = tableInfo.any((row) => row.data['name'] == 'read_at');
+
+          if (!hasReadAt && hasIsRead) {
+            await m.addColumn(articles, articles.readAt);
+            // Use CURRENT_TIMESTAMP instead of strftime for better compatibility
+            await customStatement(
+              "UPDATE articles SET read_at = CURRENT_TIMESTAMP WHERE is_read = 1",
+            );
+            await customStatement("ALTER TABLE articles DROP COLUMN is_read");
+          } else if (hasReadAt && hasIsRead) {
+            await customStatement("ALTER TABLE articles DROP COLUMN is_read");
+          }
+        }
       },
     );
   }
@@ -69,7 +88,7 @@ class AppDatabase extends _$AppDatabase {
           siteName: Value(meta.siteName),
           publishedAt: Value(meta.publishedAt),
           savedAt: meta.savedAt,
-          isRead: Value(meta.isRead),
+          readAt: Value(meta.readAt),
           progress: Value(meta.progress),
           fileLastModified: Value(fileModified),
           authors: Value(jsonEncode(meta.authors)),

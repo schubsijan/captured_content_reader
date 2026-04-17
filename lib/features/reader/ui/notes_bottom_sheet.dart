@@ -5,9 +5,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../models/article_note.dart';
 import '../../../models/highlight.dart';
 import '../../shared/ui/plain_text_note_dialog.dart';
+import '../../tags/providers/tag_providers.dart';
 import '../services/article_note_service.dart';
 import '../services/highlight_service.dart';
 import '../../library/providers/library_providers.dart';
+import '../providers/reader_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class NotesBottomSheet extends ConsumerStatefulWidget {
@@ -31,11 +33,82 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
   List<ArticleNote> _articleNotes = [];
   List<Highlight> _highlights = [];
   bool _isLoading = true;
+  final ScrollController _scrollController = ScrollController();
+  String? _highlightedNoteId;
+  final GlobalKey _highlightedNoteKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    print('[NotesBottomSheet] initState called');
+
+    // Hier den Provider setzen, damit wir ihn im build beobachten können
+    final pendingNoteId = ref.read(scrollToNoteIdProvider);
+    print(
+      '[NotesBottomSheet] initState - pendingNoteId from provider: $pendingNoteId',
+    );
+
     _loadAllNotes();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToNoteAndHighlight(String noteId) {
+    print(
+      '[NotesBottomSheet] _scrollToNoteAndHighlight called with noteId: $noteId',
+    );
+    print(
+      '[NotesBottomSheet] _articleNotes: ${_articleNotes.map((n) => '${n.id}').toList()}',
+    );
+
+    int index = -1;
+    for (int i = 0; i < _articleNotes.length; i++) {
+      print(
+        '[NotesBottomSheet] checking index $i: ${_articleNotes[i].id} == $noteId? ${_articleNotes[i].id == noteId}',
+      );
+      if (_articleNotes[i].id == noteId) {
+        index = i;
+        break;
+      }
+    }
+
+    print('[NotesBottomSheet] found index: $index');
+
+    if (index >= 0) {
+      print('[NotesBottomSheet] setting highlightedNoteId and scrolling');
+      setState(() {
+        _highlightedNoteId = noteId;
+      });
+
+      Future.delayed(const Duration(milliseconds: 100), () {
+        print(
+          '[NotesBottomSheet] in delayed callback, hasClients: ${_scrollController.hasClients}',
+        );
+        if (_scrollController.hasClients) {
+          final offset = index * 120.0;
+          print('[NotesBottomSheet] scrolling to offset: $offset');
+          _scrollController
+              .animateTo(
+                offset,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              )
+              .then((_) {
+                Future.delayed(const Duration(milliseconds: 1200), () {
+                  if (mounted) {
+                    setState(() {
+                      _highlightedNoteId = null;
+                    });
+                  }
+                });
+              });
+        }
+      });
+    }
   }
 
   Set<String> _getLocalTags() {
@@ -50,6 +123,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
   }
 
   Future<void> _loadAllNotes() async {
+    print('[NotesBottomSheet] _loadAllNotes called');
     setState(() => _isLoading = true);
 
     // 1. Artikel-Notizen laden
@@ -115,6 +189,9 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
         _highlights = hNotesFull;
         _isLoading = false;
       });
+      print(
+        '[NotesBottomSheet] _loadAllNotes complete - notes count: ${aNotes.length}',
+      );
     }
   }
 
@@ -207,6 +284,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
     if (result != null && result.$1.trim().isNotEmpty) {
       await widget.noteService.addNote(result.$1, tags: result.$2);
       ref.invalidate(allTagsProvider);
+      ref.invalidate(tagListProvider);
       await _loadAllNotes();
     }
   }
@@ -238,6 +316,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
         );
       }
       ref.invalidate(allTagsProvider);
+      ref.invalidate(tagListProvider);
       await _loadAllNotes();
     }
   }
@@ -279,6 +358,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
       );
 
       ref.invalidate(allTagsProvider);
+      ref.invalidate(tagListProvider);
       await _loadAllNotes();
     }
   }
@@ -294,12 +374,28 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final noteIdToScroll = ref.watch(scrollToNoteIdProvider);
+    print(
+      '[NotesBottomSheet] build called, isLoading: $_isLoading, noteIdToScroll: $noteIdToScroll',
+    );
+
+    // Use Future.microtask to delay the check until after the build is complete
+    if (noteIdToScroll != null && !_isLoading) {
+      print('[NotesBottomSheet] scheduling scroll for: $noteIdToScroll');
+      Future.microtask(() {
+        if (mounted && !_isLoading) {
+          _scrollToNoteAndHighlight(noteIdToScroll);
+          ref.read(scrollToNoteIdProvider.notifier).state = null;
+        }
+      });
+    }
+
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.6,
       minChildSize: 0.4,
       maxChildSize: 0.9,
-      builder: (context, scrollController) {
+      builder: (context, sheetScrollController) {
         return Container(
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -333,7 +429,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : ListView(
-                        controller: scrollController,
+                        controller: _scrollController,
                         children: _buildListContent(),
                       ),
               ),
@@ -364,60 +460,80 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
     // --- 1. Artikel Notizen ---
     for (var note in _articleNotes) {
       final dateStr = DateFormat('dd.MM.yyyy HH:mm').format(note.createdAt);
+      final isHighlighted = _highlightedNoteId == note.id;
 
       items.add(
-        ListTile(
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 4),
-              Text(
-                note.content,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.grey.shade800),
-              ),
-              if (note.tags.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
-                  child: Wrap(
-                    spacing: 6.0,
-                    runSpacing: 4.0,
-                    children: note.tags
-                        .map(
-                          (tag) => Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '#$tag',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            color: isHighlighted
+                ? Colors.orange.withValues(alpha: 0.3)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: isHighlighted
+                ? Border.all(color: Colors.orange, width: 2)
+                : null,
+          ),
+          child: ListTile(
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(
+                  note.content,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade800,
+                    fontWeight: isHighlighted
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
-              const SizedBox(height: 4),
-              Text(
-                dateStr,
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
-              ),
-            ],
+                if (note.tags.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                    child: Wrap(
+                      spacing: 6.0,
+                      runSpacing: 4.0,
+                      children: note.tags
+                          .map(
+                            (tag) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '#$tag',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  dateStr,
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+              ],
+            ),
+            onTap: () => _editArticleNote(note),
+            onLongPress: () async {
+              await widget.noteService.deleteNote(note.id);
+              ref.invalidate(allTagsProvider);
+              ref.invalidate(tagListProvider);
+              await _loadAllNotes();
+            },
           ),
-          onTap: () => _editArticleNote(note),
-          onLongPress: () async {
-            await widget.noteService.deleteNote(note.id);
-            await _loadAllNotes();
-          },
         ),
       );
       items.add(const Divider(height: 1));
@@ -472,7 +588,7 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
           decorationThickness: isUnderline ? 3.0 : null,
           backgroundColor: isUnderline
               ? Colors.transparent
-              : highlightColor.withOpacity(0.4),
+              : highlightColor.withValues(alpha: 0.4),
         );
 
         items.add(

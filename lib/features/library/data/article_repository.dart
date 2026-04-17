@@ -13,7 +13,7 @@ class ArticleRepository {
 
   Stream<List<Article>> watchUnreadArticles() {
     return (_db.select(_db.articles)
-          ..where((t) => t.isRead.equals(false))
+          ..where((t) => t.readAt.isNull())
           ..orderBy([
             (t) => OrderingTerm(expression: t.savedAt, mode: OrderingMode.desc),
           ]))
@@ -22,11 +22,11 @@ class ArticleRepository {
 
   Stream<List<Article>> watchReadArticles() {
     return (_db.select(_db.articles)
-          ..where((t) => t.isRead.equals(true))
+          ..where((t) => t.readAt.isNotNull())
           ..orderBy([
-            // fileLastModified wird beim Statuswechsel aktualisiert -> ideal für "zuletzt gelesen"
+            // readAt timestamp für "zuletzt gelesen" Reihenfolge
             (t) => OrderingTerm(
-              expression: t.fileLastModified,
+              expression: t.readAt,
               mode: OrderingMode.desc,
             ),
           ]))
@@ -38,8 +38,8 @@ class ArticleRepository {
     final meta = await _fileSource.readMeta(articleId);
     if (meta == null) return;
 
-    // 2. Updaten
-    final updatedMeta = meta.copyWith(isRead: isRead);
+    // 2. Updaten (readAt = timestamp wenn gelesen, null wenn ungelesen)
+    final updatedMeta = meta.copyWith(readAt: isRead ? DateTime.now() : null);
 
     // 3. File-First speichern
     await _fileSource.writeMetaAtomic(articleId, updatedMeta);
@@ -49,7 +49,7 @@ class ArticleRepository {
       _db.articles,
     )..where((t) => t.id.equals(articleId))).write(
       ArticlesCompanion(
-        isRead: drift.Value(isRead),
+        readAt: drift.Value(isRead ? DateTime.now() : null),
         fileLastModified: drift.Value(DateTime.now()),
       ),
     );

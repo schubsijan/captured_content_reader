@@ -5,7 +5,6 @@ part 'article_meta.g.dart';
 
 @freezed
 abstract class ArticleMeta with _$ArticleMeta {
-  // <--- 'abstract' hinzufügen
   const factory ArticleMeta({
     required String uuid,
     required String url,
@@ -15,11 +14,15 @@ abstract class ArticleMeta with _$ArticleMeta {
     @Default([]) List<String> authors,
     @Default([]) List<String> tags,
     required DateTime savedAt,
-    @Default(false) bool isRead,
+    DateTime? readAt, // null = unread, timestamp = read
     @Default(0.0) double progress,
     String? note,
   }) = _ArticleMeta;
 
   factory ArticleMeta.fromJson(Map<String, dynamic> json) =>
       _$ArticleMetaFromJson(json);
+}
+
+extension ArticleMetaExtension on ArticleMeta {
+  bool get isRead => readAt != null;
 }

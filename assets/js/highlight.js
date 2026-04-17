@@ -67,9 +67,13 @@ class CleanReadEngine {
   }
 
   _attachOutsideClickListener() {
+    // Use capture phase so this runs BEFORE the highlight's onclick
     document.addEventListener('click', (e) => {
       if (this.isDraggingHandle.val) return;
       if (e.target.closest(`.${this.handleClass}`)) return;
+
+      // Don't close when clicking on buttons (color menu, type buttons, etc.)
+      if (e.target.tagName === 'BUTTON') return;
 
       const clickedHighlight = e.target.closest(`.${this.highlightClass}`);
 
@@ -87,7 +91,7 @@ class CleanReadEngine {
         this.activeHighlightId.val = null;
         this._clearHandles();
       }
-    });
+    }, true);
 
     window.addEventListener('scroll', () => {
       if (this.activeHighlightId.val && !this.isDraggingHandle.val) {
@@ -142,7 +146,7 @@ class CleanReadEngine {
     const menu = div({
       style: () => `
             position: fixed;
-            bottom: ${this.activeHighlightId.val && !this.isDraggingHandle.val ? '40px' : '-240px'};
+            bottom: ${this.activeHighlightId.val && !this.isDraggingHandle.val ? '50px' : '-240px'};
             left: 50%;
             transform: translateX(-50%);
             background: white;
@@ -398,9 +402,13 @@ class CleanReadEngine {
           const DIFF = now - lastClick;
           lastClick = now;
 
+          // Aktuelle Farbe und Typ aus dem Element lesen (nicht aus der Closure)
+          const currentColor = e.currentTarget.getAttribute('data-color') || color;
+          const currentType = e.currentTarget.getAttribute('data-type') || type;
+
           this.activeHighlightId.val = id;
-          this.activeColor.val = color;
-          this.activeType.val = type;
+          this.activeColor.val = currentColor;
+          this.activeType.val = currentType;
           this._updateHandles(id);
 
           if (DIFF < 300) {
@@ -721,6 +729,10 @@ class CleanReadEngine {
         }, 800);
       });
     }
+  }
+
+  openNotesSheet(noteId) {
+    this._sendToFlutter('open_notes_sheet', { noteId: noteId });
   }
 
   copyHighlightText(id) {

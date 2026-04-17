@@ -68,18 +68,14 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _isReadMeta = const VerificationMeta('isRead');
+  static const VerificationMeta _readAtMeta = const VerificationMeta('readAt');
   @override
-  late final GeneratedColumn<bool> isRead = GeneratedColumn<bool>(
-    'is_read',
+  late final GeneratedColumn<DateTime> readAt = GeneratedColumn<DateTime>(
+    'read_at',
     aliasedName,
-    false,
-    type: DriftSqlType.bool,
+    true,
+    type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_read" IN (0, 1))',
-    ),
-    defaultValue: const Constant(false),
   );
   static const VerificationMeta _progressMeta = const VerificationMeta(
     'progress',
@@ -134,7 +130,7 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     siteName,
     publishedAt,
     savedAt,
-    isRead,
+    readAt,
     progress,
     fileLastModified,
     authors,
@@ -196,10 +192,10 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     } else if (isInserting) {
       context.missing(_savedAtMeta);
     }
-    if (data.containsKey('is_read')) {
+    if (data.containsKey('read_at')) {
       context.handle(
-        _isReadMeta,
-        isRead.isAcceptableOrUnknown(data['is_read']!, _isReadMeta),
+        _readAtMeta,
+        readAt.isAcceptableOrUnknown(data['read_at']!, _readAtMeta),
       );
     }
     if (data.containsKey('progress')) {
@@ -262,10 +258,10 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}saved_at'],
       )!,
-      isRead: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}is_read'],
-      )!,
+      readAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}read_at'],
+      ),
       progress: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}progress'],
@@ -298,7 +294,7 @@ class Article extends DataClass implements Insertable<Article> {
   final String? siteName;
   final DateTime? publishedAt;
   final DateTime savedAt;
-  final bool isRead;
+  final DateTime? readAt;
   final double progress;
   final DateTime? fileLastModified;
   final String authors;
@@ -310,7 +306,7 @@ class Article extends DataClass implements Insertable<Article> {
     this.siteName,
     this.publishedAt,
     required this.savedAt,
-    required this.isRead,
+    this.readAt,
     required this.progress,
     this.fileLastModified,
     required this.authors,
@@ -329,7 +325,9 @@ class Article extends DataClass implements Insertable<Article> {
       map['published_at'] = Variable<DateTime>(publishedAt);
     }
     map['saved_at'] = Variable<DateTime>(savedAt);
-    map['is_read'] = Variable<bool>(isRead);
+    if (!nullToAbsent || readAt != null) {
+      map['read_at'] = Variable<DateTime>(readAt);
+    }
     map['progress'] = Variable<double>(progress);
     if (!nullToAbsent || fileLastModified != null) {
       map['file_last_modified'] = Variable<DateTime>(fileLastModified);
@@ -353,7 +351,9 @@ class Article extends DataClass implements Insertable<Article> {
           ? const Value.absent()
           : Value(publishedAt),
       savedAt: Value(savedAt),
-      isRead: Value(isRead),
+      readAt: readAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(readAt),
       progress: Value(progress),
       fileLastModified: fileLastModified == null && nullToAbsent
           ? const Value.absent()
@@ -375,7 +375,7 @@ class Article extends DataClass implements Insertable<Article> {
       siteName: serializer.fromJson<String?>(json['siteName']),
       publishedAt: serializer.fromJson<DateTime?>(json['publishedAt']),
       savedAt: serializer.fromJson<DateTime>(json['savedAt']),
-      isRead: serializer.fromJson<bool>(json['isRead']),
+      readAt: serializer.fromJson<DateTime?>(json['readAt']),
       progress: serializer.fromJson<double>(json['progress']),
       fileLastModified: serializer.fromJson<DateTime?>(
         json['fileLastModified'],
@@ -394,7 +394,7 @@ class Article extends DataClass implements Insertable<Article> {
       'siteName': serializer.toJson<String?>(siteName),
       'publishedAt': serializer.toJson<DateTime?>(publishedAt),
       'savedAt': serializer.toJson<DateTime>(savedAt),
-      'isRead': serializer.toJson<bool>(isRead),
+      'readAt': serializer.toJson<DateTime?>(readAt),
       'progress': serializer.toJson<double>(progress),
       'fileLastModified': serializer.toJson<DateTime?>(fileLastModified),
       'authors': serializer.toJson<String>(authors),
@@ -409,7 +409,7 @@ class Article extends DataClass implements Insertable<Article> {
     Value<String?> siteName = const Value.absent(),
     Value<DateTime?> publishedAt = const Value.absent(),
     DateTime? savedAt,
-    bool? isRead,
+    Value<DateTime?> readAt = const Value.absent(),
     double? progress,
     Value<DateTime?> fileLastModified = const Value.absent(),
     String? authors,
@@ -421,7 +421,7 @@ class Article extends DataClass implements Insertable<Article> {
     siteName: siteName.present ? siteName.value : this.siteName,
     publishedAt: publishedAt.present ? publishedAt.value : this.publishedAt,
     savedAt: savedAt ?? this.savedAt,
-    isRead: isRead ?? this.isRead,
+    readAt: readAt.present ? readAt.value : this.readAt,
     progress: progress ?? this.progress,
     fileLastModified: fileLastModified.present
         ? fileLastModified.value
@@ -439,7 +439,7 @@ class Article extends DataClass implements Insertable<Article> {
           ? data.publishedAt.value
           : this.publishedAt,
       savedAt: data.savedAt.present ? data.savedAt.value : this.savedAt,
-      isRead: data.isRead.present ? data.isRead.value : this.isRead,
+      readAt: data.readAt.present ? data.readAt.value : this.readAt,
       progress: data.progress.present ? data.progress.value : this.progress,
       fileLastModified: data.fileLastModified.present
           ? data.fileLastModified.value
@@ -458,7 +458,7 @@ class Article extends DataClass implements Insertable<Article> {
           ..write('siteName: $siteName, ')
           ..write('publishedAt: $publishedAt, ')
           ..write('savedAt: $savedAt, ')
-          ..write('isRead: $isRead, ')
+          ..write('readAt: $readAt, ')
           ..write('progress: $progress, ')
           ..write('fileLastModified: $fileLastModified, ')
           ..write('authors: $authors, ')
@@ -475,7 +475,7 @@ class Article extends DataClass implements Insertable<Article> {
     siteName,
     publishedAt,
     savedAt,
-    isRead,
+    readAt,
     progress,
     fileLastModified,
     authors,
@@ -491,7 +491,7 @@ class Article extends DataClass implements Insertable<Article> {
           other.siteName == this.siteName &&
           other.publishedAt == this.publishedAt &&
           other.savedAt == this.savedAt &&
-          other.isRead == this.isRead &&
+          other.readAt == this.readAt &&
           other.progress == this.progress &&
           other.fileLastModified == this.fileLastModified &&
           other.authors == this.authors &&
@@ -505,7 +505,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   final Value<String?> siteName;
   final Value<DateTime?> publishedAt;
   final Value<DateTime> savedAt;
-  final Value<bool> isRead;
+  final Value<DateTime?> readAt;
   final Value<double> progress;
   final Value<DateTime?> fileLastModified;
   final Value<String> authors;
@@ -518,7 +518,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.siteName = const Value.absent(),
     this.publishedAt = const Value.absent(),
     this.savedAt = const Value.absent(),
-    this.isRead = const Value.absent(),
+    this.readAt = const Value.absent(),
     this.progress = const Value.absent(),
     this.fileLastModified = const Value.absent(),
     this.authors = const Value.absent(),
@@ -532,7 +532,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.siteName = const Value.absent(),
     this.publishedAt = const Value.absent(),
     required DateTime savedAt,
-    this.isRead = const Value.absent(),
+    this.readAt = const Value.absent(),
     this.progress = const Value.absent(),
     this.fileLastModified = const Value.absent(),
     this.authors = const Value.absent(),
@@ -549,7 +549,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Expression<String>? siteName,
     Expression<DateTime>? publishedAt,
     Expression<DateTime>? savedAt,
-    Expression<bool>? isRead,
+    Expression<DateTime>? readAt,
     Expression<double>? progress,
     Expression<DateTime>? fileLastModified,
     Expression<String>? authors,
@@ -563,7 +563,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       if (siteName != null) 'site_name': siteName,
       if (publishedAt != null) 'published_at': publishedAt,
       if (savedAt != null) 'saved_at': savedAt,
-      if (isRead != null) 'is_read': isRead,
+      if (readAt != null) 'read_at': readAt,
       if (progress != null) 'progress': progress,
       if (fileLastModified != null) 'file_last_modified': fileLastModified,
       if (authors != null) 'authors': authors,
@@ -579,7 +579,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Value<String?>? siteName,
     Value<DateTime?>? publishedAt,
     Value<DateTime>? savedAt,
-    Value<bool>? isRead,
+    Value<DateTime?>? readAt,
     Value<double>? progress,
     Value<DateTime?>? fileLastModified,
     Value<String>? authors,
@@ -593,7 +593,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       siteName: siteName ?? this.siteName,
       publishedAt: publishedAt ?? this.publishedAt,
       savedAt: savedAt ?? this.savedAt,
-      isRead: isRead ?? this.isRead,
+      readAt: readAt ?? this.readAt,
       progress: progress ?? this.progress,
       fileLastModified: fileLastModified ?? this.fileLastModified,
       authors: authors ?? this.authors,
@@ -623,8 +623,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     if (savedAt.present) {
       map['saved_at'] = Variable<DateTime>(savedAt.value);
     }
-    if (isRead.present) {
-      map['is_read'] = Variable<bool>(isRead.value);
+    if (readAt.present) {
+      map['read_at'] = Variable<DateTime>(readAt.value);
     }
     if (progress.present) {
       map['progress'] = Variable<double>(progress.value);
@@ -653,7 +653,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
           ..write('siteName: $siteName, ')
           ..write('publishedAt: $publishedAt, ')
           ..write('savedAt: $savedAt, ')
-          ..write('isRead: $isRead, ')
+          ..write('readAt: $readAt, ')
           ..write('progress: $progress, ')
           ..write('fileLastModified: $fileLastModified, ')
           ..write('authors: $authors, ')
@@ -1555,7 +1555,7 @@ typedef $$ArticlesTableCreateCompanionBuilder =
       Value<String?> siteName,
       Value<DateTime?> publishedAt,
       required DateTime savedAt,
-      Value<bool> isRead,
+      Value<DateTime?> readAt,
       Value<double> progress,
       Value<DateTime?> fileLastModified,
       Value<String> authors,
@@ -1570,7 +1570,7 @@ typedef $$ArticlesTableUpdateCompanionBuilder =
       Value<String?> siteName,
       Value<DateTime?> publishedAt,
       Value<DateTime> savedAt,
-      Value<bool> isRead,
+      Value<DateTime?> readAt,
       Value<double> progress,
       Value<DateTime?> fileLastModified,
       Value<String> authors,
@@ -1676,8 +1676,8 @@ class $$ArticlesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<bool> get isRead => $composableBuilder(
-    column: $table.isRead,
+  ColumnFilters<DateTime> get readAt => $composableBuilder(
+    column: $table.readAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1816,8 +1816,8 @@ class $$ArticlesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<bool> get isRead => $composableBuilder(
-    column: $table.isRead,
+  ColumnOrderings<DateTime> get readAt => $composableBuilder(
+    column: $table.readAt,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -1871,8 +1871,8 @@ class $$ArticlesTableAnnotationComposer
   GeneratedColumn<DateTime> get savedAt =>
       $composableBuilder(column: $table.savedAt, builder: (column) => column);
 
-  GeneratedColumn<bool> get isRead =>
-      $composableBuilder(column: $table.isRead, builder: (column) => column);
+  GeneratedColumn<DateTime> get readAt =>
+      $composableBuilder(column: $table.readAt, builder: (column) => column);
 
   GeneratedColumn<double> get progress =>
       $composableBuilder(column: $table.progress, builder: (column) => column);
@@ -2002,7 +2002,7 @@ class $$ArticlesTableTableManager
                 Value<String?> siteName = const Value.absent(),
                 Value<DateTime?> publishedAt = const Value.absent(),
                 Value<DateTime> savedAt = const Value.absent(),
-                Value<bool> isRead = const Value.absent(),
+                Value<DateTime?> readAt = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<DateTime?> fileLastModified = const Value.absent(),
                 Value<String> authors = const Value.absent(),
@@ -2015,7 +2015,7 @@ class $$ArticlesTableTableManager
                 siteName: siteName,
                 publishedAt: publishedAt,
                 savedAt: savedAt,
-                isRead: isRead,
+                readAt: readAt,
                 progress: progress,
                 fileLastModified: fileLastModified,
                 authors: authors,
@@ -2030,7 +2030,7 @@ class $$ArticlesTableTableManager
                 Value<String?> siteName = const Value.absent(),
                 Value<DateTime?> publishedAt = const Value.absent(),
                 required DateTime savedAt,
-                Value<bool> isRead = const Value.absent(),
+                Value<DateTime?> readAt = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<DateTime?> fileLastModified = const Value.absent(),
                 Value<String> authors = const Value.absent(),
@@ -2043,7 +2043,7 @@ class $$ArticlesTableTableManager
                 siteName: siteName,
                 publishedAt: publishedAt,
                 savedAt: savedAt,
-                isRead: isRead,
+                readAt: readAt,
                 progress: progress,
                 fileLastModified: fileLastModified,
                 authors: authors,

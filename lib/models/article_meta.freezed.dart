@@ -15,7 +15,8 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ArticleMeta {
 
- String get uuid; String get url; String get title; String? get siteName; DateTime? get publishedAt; List<String> get authors; List<String> get tags; DateTime get savedAt; bool get isRead; double get progress; String? get note;
+ String get uuid; String get url; String get title; String? get siteName; DateTime? get publishedAt; List<String> get authors; List<String> get tags; DateTime get savedAt; DateTime? get readAt;// null = unread, timestamp = read
+ double get progress; String? get note;
 /// Create a copy of ArticleMeta
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +29,16 @@ $ArticleMetaCopyWith<ArticleMeta> get copyWith => _$ArticleMetaCopyWithImpl<Arti
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ArticleMeta&&(identical(other.uuid, uuid) || other.uuid == uuid)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.siteName, siteName) || other.siteName == siteName)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.authors, authors)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.savedAt, savedAt) || other.savedAt == savedAt)&&(identical(other.isRead, isRead) || other.isRead == isRead)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.note, note) || other.note == note));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ArticleMeta&&(identical(other.uuid, uuid) || other.uuid == uuid)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.siteName, siteName) || other.siteName == siteName)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other.authors, authors)&&const DeepCollectionEquality().equals(other.tags, tags)&&(identical(other.savedAt, savedAt) || other.savedAt == savedAt)&&(identical(other.readAt, readAt) || other.readAt == readAt)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.note, note) || other.note == note));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,uuid,url,title,siteName,publishedAt,const DeepCollectionEquality().hash(authors),const DeepCollectionEquality().hash(tags),savedAt,isRead,progress,note);
+int get hashCode => Object.hash(runtimeType,uuid,url,title,siteName,publishedAt,const DeepCollectionEquality().hash(authors),const DeepCollectionEquality().hash(tags),savedAt,readAt,progress,note);
 
 @override
 String toString() {
-  return 'ArticleMeta(uuid: $uuid, url: $url, title: $title, siteName: $siteName, publishedAt: $publishedAt, authors: $authors, tags: $tags, savedAt: $savedAt, isRead: $isRead, progress: $progress, note: $note)';
+  return 'ArticleMeta(uuid: $uuid, url: $url, title: $title, siteName: $siteName, publishedAt: $publishedAt, authors: $authors, tags: $tags, savedAt: $savedAt, readAt: $readAt, progress: $progress, note: $note)';
 }
 
 
@@ -48,7 +49,7 @@ abstract mixin class $ArticleMetaCopyWith<$Res>  {
   factory $ArticleMetaCopyWith(ArticleMeta value, $Res Function(ArticleMeta) _then) = _$ArticleMetaCopyWithImpl;
 @useResult
 $Res call({
- String uuid, String url, String title, String? siteName, DateTime? publishedAt, List<String> authors, List<String> tags, DateTime savedAt, bool isRead, double progress, String? note
+ String uuid, String url, String title, String? siteName, DateTime? publishedAt, List<String> authors, List<String> tags, DateTime savedAt, DateTime? readAt, double progress, String? note
 });
 
 
@@ -65,7 +66,7 @@ class _$ArticleMetaCopyWithImpl<$Res>
 
 /// Create a copy of ArticleMeta
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? uuid = null,Object? url = null,Object? title = null,Object? siteName = freezed,Object? publishedAt = freezed,Object? authors = null,Object? tags = null,Object? savedAt = null,Object? isRead = null,Object? progress = null,Object? note = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? uuid = null,Object? url = null,Object? title = null,Object? siteName = freezed,Object? publishedAt = freezed,Object? authors = null,Object? tags = null,Object? savedAt = null,Object? readAt = freezed,Object? progress = null,Object? note = freezed,}) {
   return _then(_self.copyWith(
 uuid: null == uuid ? _self.uuid : uuid // ignore: cast_nullable_to_non_nullable
 as String,url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
@@ -75,8 +76,8 @@ as String?,publishedAt: freezed == publishedAt ? _self.publishedAt : publishedAt
 as DateTime?,authors: null == authors ? _self.authors : authors // ignore: cast_nullable_to_non_nullable
 as List<String>,tags: null == tags ? _self.tags : tags // ignore: cast_nullable_to_non_nullable
 as List<String>,savedAt: null == savedAt ? _self.savedAt : savedAt // ignore: cast_nullable_to_non_nullable
-as DateTime,isRead: null == isRead ? _self.isRead : isRead // ignore: cast_nullable_to_non_nullable
-as bool,progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
+as DateTime,readAt: freezed == readAt ? _self.readAt : readAt // ignore: cast_nullable_to_non_nullable
+as DateTime?,progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
 as double,note: freezed == note ? _self.note : note // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
@@ -163,10 +164,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String uuid,  String url,  String title,  String? siteName,  DateTime? publishedAt,  List<String> authors,  List<String> tags,  DateTime savedAt,  bool isRead,  double progress,  String? note)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String uuid,  String url,  String title,  String? siteName,  DateTime? publishedAt,  List<String> authors,  List<String> tags,  DateTime savedAt,  DateTime? readAt,  double progress,  String? note)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ArticleMeta() when $default != null:
-return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedAt,_that.authors,_that.tags,_that.savedAt,_that.isRead,_that.progress,_that.note);case _:
+return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedAt,_that.authors,_that.tags,_that.savedAt,_that.readAt,_that.progress,_that.note);case _:
   return orElse();
 
 }
@@ -184,10 +185,10 @@ return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedA
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String uuid,  String url,  String title,  String? siteName,  DateTime? publishedAt,  List<String> authors,  List<String> tags,  DateTime savedAt,  bool isRead,  double progress,  String? note)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String uuid,  String url,  String title,  String? siteName,  DateTime? publishedAt,  List<String> authors,  List<String> tags,  DateTime savedAt,  DateTime? readAt,  double progress,  String? note)  $default,) {final _that = this;
 switch (_that) {
 case _ArticleMeta():
-return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedAt,_that.authors,_that.tags,_that.savedAt,_that.isRead,_that.progress,_that.note);case _:
+return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedAt,_that.authors,_that.tags,_that.savedAt,_that.readAt,_that.progress,_that.note);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -204,10 +205,10 @@ return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedA
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String uuid,  String url,  String title,  String? siteName,  DateTime? publishedAt,  List<String> authors,  List<String> tags,  DateTime savedAt,  bool isRead,  double progress,  String? note)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String uuid,  String url,  String title,  String? siteName,  DateTime? publishedAt,  List<String> authors,  List<String> tags,  DateTime savedAt,  DateTime? readAt,  double progress,  String? note)?  $default,) {final _that = this;
 switch (_that) {
 case _ArticleMeta() when $default != null:
-return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedAt,_that.authors,_that.tags,_that.savedAt,_that.isRead,_that.progress,_that.note);case _:
+return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedAt,_that.authors,_that.tags,_that.savedAt,_that.readAt,_that.progress,_that.note);case _:
   return null;
 
 }
@@ -219,7 +220,7 @@ return $default(_that.uuid,_that.url,_that.title,_that.siteName,_that.publishedA
 @JsonSerializable()
 
 class _ArticleMeta implements ArticleMeta {
-  const _ArticleMeta({required this.uuid, required this.url, required this.title, this.siteName, this.publishedAt, final  List<String> authors = const [], final  List<String> tags = const [], required this.savedAt, this.isRead = false, this.progress = 0.0, this.note}): _authors = authors,_tags = tags;
+  const _ArticleMeta({required this.uuid, required this.url, required this.title, this.siteName, this.publishedAt, final  List<String> authors = const [], final  List<String> tags = const [], required this.savedAt, this.readAt, this.progress = 0.0, this.note}): _authors = authors,_tags = tags;
   factory _ArticleMeta.fromJson(Map<String, dynamic> json) => _$ArticleMetaFromJson(json);
 
 @override final  String uuid;
@@ -242,7 +243,8 @@ class _ArticleMeta implements ArticleMeta {
 }
 
 @override final  DateTime savedAt;
-@override@JsonKey() final  bool isRead;
+@override final  DateTime? readAt;
+// null = unread, timestamp = read
 @override@JsonKey() final  double progress;
 @override final  String? note;
 
@@ -259,16 +261,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ArticleMeta&&(identical(other.uuid, uuid) || other.uuid == uuid)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.siteName, siteName) || other.siteName == siteName)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._authors, _authors)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.savedAt, savedAt) || other.savedAt == savedAt)&&(identical(other.isRead, isRead) || other.isRead == isRead)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.note, note) || other.note == note));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ArticleMeta&&(identical(other.uuid, uuid) || other.uuid == uuid)&&(identical(other.url, url) || other.url == url)&&(identical(other.title, title) || other.title == title)&&(identical(other.siteName, siteName) || other.siteName == siteName)&&(identical(other.publishedAt, publishedAt) || other.publishedAt == publishedAt)&&const DeepCollectionEquality().equals(other._authors, _authors)&&const DeepCollectionEquality().equals(other._tags, _tags)&&(identical(other.savedAt, savedAt) || other.savedAt == savedAt)&&(identical(other.readAt, readAt) || other.readAt == readAt)&&(identical(other.progress, progress) || other.progress == progress)&&(identical(other.note, note) || other.note == note));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,uuid,url,title,siteName,publishedAt,const DeepCollectionEquality().hash(_authors),const DeepCollectionEquality().hash(_tags),savedAt,isRead,progress,note);
+int get hashCode => Object.hash(runtimeType,uuid,url,title,siteName,publishedAt,const DeepCollectionEquality().hash(_authors),const DeepCollectionEquality().hash(_tags),savedAt,readAt,progress,note);
 
 @override
 String toString() {
-  return 'ArticleMeta(uuid: $uuid, url: $url, title: $title, siteName: $siteName, publishedAt: $publishedAt, authors: $authors, tags: $tags, savedAt: $savedAt, isRead: $isRead, progress: $progress, note: $note)';
+  return 'ArticleMeta(uuid: $uuid, url: $url, title: $title, siteName: $siteName, publishedAt: $publishedAt, authors: $authors, tags: $tags, savedAt: $savedAt, readAt: $readAt, progress: $progress, note: $note)';
 }
 
 
@@ -279,7 +281,7 @@ abstract mixin class _$ArticleMetaCopyWith<$Res> implements $ArticleMetaCopyWith
   factory _$ArticleMetaCopyWith(_ArticleMeta value, $Res Function(_ArticleMeta) _then) = __$ArticleMetaCopyWithImpl;
 @override @useResult
 $Res call({
- String uuid, String url, String title, String? siteName, DateTime? publishedAt, List<String> authors, List<String> tags, DateTime savedAt, bool isRead, double progress, String? note
+ String uuid, String url, String title, String? siteName, DateTime? publishedAt, List<String> authors, List<String> tags, DateTime savedAt, DateTime? readAt, double progress, String? note
 });
 
 
@@ -296,7 +298,7 @@ class __$ArticleMetaCopyWithImpl<$Res>
 
 /// Create a copy of ArticleMeta
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? uuid = null,Object? url = null,Object? title = null,Object? siteName = freezed,Object? publishedAt = freezed,Object? authors = null,Object? tags = null,Object? savedAt = null,Object? isRead = null,Object? progress = null,Object? note = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? uuid = null,Object? url = null,Object? title = null,Object? siteName = freezed,Object? publishedAt = freezed,Object? authors = null,Object? tags = null,Object? savedAt = null,Object? readAt = freezed,Object? progress = null,Object? note = freezed,}) {
   return _then(_ArticleMeta(
 uuid: null == uuid ? _self.uuid : uuid // ignore: cast_nullable_to_non_nullable
 as String,url: null == url ? _self.url : url // ignore: cast_nullable_to_non_nullable
@@ -306,8 +308,8 @@ as String?,publishedAt: freezed == publishedAt ? _self.publishedAt : publishedAt
 as DateTime?,authors: null == authors ? _self._authors : authors // ignore: cast_nullable_to_non_nullable
 as List<String>,tags: null == tags ? _self._tags : tags // ignore: cast_nullable_to_non_nullable
 as List<String>,savedAt: null == savedAt ? _self.savedAt : savedAt // ignore: cast_nullable_to_non_nullable
-as DateTime,isRead: null == isRead ? _self.isRead : isRead // ignore: cast_nullable_to_non_nullable
-as bool,progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
+as DateTime,readAt: freezed == readAt ? _self.readAt : readAt // ignore: cast_nullable_to_non_nullable
+as DateTime?,progress: null == progress ? _self.progress : progress // ignore: cast_nullable_to_non_nullable
 as double,note: freezed == note ? _self.note : note // ignore: cast_nullable_to_non_nullable
 as String?,
   ));

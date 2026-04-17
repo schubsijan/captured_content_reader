@@ -19,8 +19,15 @@ import '../providers/reader_controller.dart';
 
 class ArticleReaderScreen extends ConsumerStatefulWidget {
   final String articleId;
+  final String? scrollToHighlightId;
+  final String? scrollToNoteId;
 
-  const ArticleReaderScreen({super.key, required this.articleId});
+  const ArticleReaderScreen({
+    super.key,
+    required this.articleId,
+    this.scrollToHighlightId,
+    this.scrollToNoteId,
+  });
 
   @override
   ConsumerState<ArticleReaderScreen> createState() =>
@@ -33,7 +40,44 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   @override
   void initState() {
     super.initState();
+    print(
+      '[ArticleReaderScreen] initState - scrollToNoteId: ${widget.scrollToNoteId}',
+    );
+    if (widget.scrollToNoteId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        print('[ArticleReaderScreen] postFrameCallback - opening notes sheet');
+        _openNotesSheet();
+      });
+    }
     _prepareWebView();
+  }
+
+  void _openNotesSheet() {
+    print('[ArticleReaderScreen] _openNotesSheet called');
+    final notifier = ref.read(
+      readerControllerProvider(widget.articleId).notifier,
+    );
+    final noteId = widget.scrollToNoteId;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        print('[ArticleReaderScreen] builder called');
+        // Set provider directly in builder - will be picked up by the listen in NotesBottomSheet
+        if (noteId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            print('[ArticleReaderScreen] setting provider to: $noteId');
+            ref.read(scrollToNoteIdProvider.notifier).state = noteId;
+          });
+        }
+        return NotesBottomSheet(
+          noteService: notifier.noteService,
+          highlightService: notifier.highlightService,
+          webViewController: null,
+        );
+      },
+    );
   }
 
   Future<void> _prepareWebView() async {
@@ -78,6 +122,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               final sanitizedJson = jsonEncode(jsonString);
               await controller.runJavaScript(
                 'window.cleanReadEngine.restoreHighlights(JSON.parse($sanitizedJson));',
+              );
+            }
+
+            if (widget.scrollToHighlightId != null) {
+              await Future.delayed(const Duration(milliseconds: 300));
+              await controller.runJavaScript(
+                "window.cleanReadEngine.scrollToHighlight('${widget.scrollToHighlightId}');",
               );
             }
 
@@ -308,6 +359,12 @@ const style = document.createElement('style');
                                   widget.articleId,
                                 ).notifier,
                               );
+                              if (widget.scrollToNoteId != null) {
+                                ref
+                                        .read(scrollToNoteIdProvider.notifier)
+                                        .state =
+                                    widget.scrollToNoteId;
+                              }
                               showModalBottomSheet(
                                 context: context,
                                 isScrollControlled: true,
@@ -359,7 +416,7 @@ const style = document.createElement('style');
   }
 
   Widget _buildOptionsMenu(BuildContext context, Article article) {
-    final isRead = article.isRead;
+    final isRead = article.readAt != null;
     return PopupMenuButton<String>(
       onSelected: (value) async {
         if (value == 'toggleRead') {

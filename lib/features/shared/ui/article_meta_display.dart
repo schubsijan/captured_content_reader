@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:captured_content_reader/database/app_database.dart';
+import 'package:captured_content_reader/features/tags/ui/tag_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -125,9 +126,20 @@ class ArticleMetaDisplay extends ConsumerWidget {
                           child: Row(
                             children: [
                               ...tags.map(
-                                (tag) => Padding(
-                                  padding: const EdgeInsets.only(right: 6.0),
-                                  child: _buildTagChip(tag),
+                                (tag) => InkWell(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 6.0),
+                                    child: _buildTagChip(tag),
+                                  ),
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            TagDetailScreen(tagName: tag),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                               const SizedBox(width: 20),

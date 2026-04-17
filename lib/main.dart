@@ -10,7 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:captured_content_reader/database/app_database.dart';
 import 'package:captured_content_reader/features/onboarding/providers/app_startup_provider.dart';
 import 'package:captured_content_reader/features/onboarding/ui/onboarding_screen.dart';
-import 'package:captured_content_reader/features/library/ui/library_screen.dart';
+import 'package:captured_content_reader/navigation/main_navigation_screen.dart';
 import 'package:captured_content_reader/navigation/navigation_handler.dart';
 
 // Dein db/connect.go Äquivalent
@@ -77,7 +77,7 @@ class CleanReadApp extends ConsumerWidget {
       case AppStartupState.onboarding:
         return const OnboardingScreen();
       case AppStartupState.library:
-        return const LibraryScreen();
+        return const MainNavigationScreen();
     }
   }
 }

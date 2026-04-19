@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../models/highlight.dart';
 
-class HighlightWithArticleId {
-  final Highlight highlight;
-  final String articleId;
-
-  HighlightWithArticleId({required this.highlight, required this.articleId});
-}
-
 class SharedHighlightListTile extends StatelessWidget {
   final Highlight highlight;
   final String? articleId;
+  final String? articleTitle;
+  final String? articleAuthors;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -18,6 +13,8 @@ class SharedHighlightListTile extends StatelessWidget {
     super.key,
     required this.highlight,
     this.articleId,
+    this.articleTitle,
+    this.articleAuthors,
     this.onTap,
     this.onLongPress,
   });
@@ -31,16 +28,29 @@ class SharedHighlightListTile extends StatelessWidget {
     }
   }
 
+  Widget _buildTagChip(String tag) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        '#$tag',
+        style: const TextStyle(fontSize: 10, color: Colors.black54),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final highlightColor = _parseColor(highlight.color);
     final cleanText = highlight.text.replaceAll('\n', ' ').trim();
     final hasNote = highlight.note != null && highlight.note!.trim().isNotEmpty;
     final hasTags = highlight.tags.isNotEmpty;
-    final hasContent = hasNote || hasTags;
     final bool isUnderline = highlight.type == HighlightType.underline;
 
-    final TextStyle highlightStyle = TextStyle(
+    final highlightStyle = TextStyle(
       fontStyle: FontStyle.italic,
       color: Colors.black87,
       fontSize: 13,
@@ -52,6 +62,64 @@ class SharedHighlightListTile extends StatelessWidget {
           ? Colors.transparent
           : highlightColor.withValues(alpha: 0.4),
     );
+
+    final cardChildren = <Widget>[];
+    
+    if (articleTitle != null) {
+      cardChildren.add(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            articleTitle!,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (articleAuthors != null && articleAuthors!.isNotEmpty)
+            Text(
+              articleAuthors!,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          const SizedBox(height: 8),
+        ],
+      ));
+    }
+    
+    cardChildren.add(Text(
+      '"$cleanText"',
+      style: highlightStyle,
+      maxLines: 4,
+      overflow: TextOverflow.ellipsis,
+    ));
+    
+    if (hasNote) {
+      cardChildren.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          highlight.note!,
+          style: TextStyle(color: Colors.grey.shade900),
+        ),
+      ));
+    }
+    
+    if (hasTags) {
+      cardChildren.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Wrap(
+          spacing: 6.0,
+          runSpacing: 4.0,
+          children: highlight.tags
+              .map((tag) => _buildTagChip(tag))
+              .toList(),
+        ),
+      ));
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -68,64 +136,9 @@ class SharedHighlightListTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: highlightColor.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  isUnderline ? 'Unterstrichen' : 'Highlight',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '"$cleanText"',
-                style: highlightStyle,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (hasContent) ...[
-                if (hasNote) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    highlight.note!,
-                    style: TextStyle(color: Colors.grey.shade900),
-                  ),
-                ],
-                if (hasTags) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6.0,
-                    runSpacing: 4.0,
-                    children: highlight.tags
-                        .map((tag) => _buildTagChip(tag))
-                        .toList(),
-                  ),
-                ],
-              ],
-            ],
+            children: cardChildren,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTagChip(String tag) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        '#$tag',
-        style: const TextStyle(fontSize: 10, color: Colors.black54),
       ),
     );
   }

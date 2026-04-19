@@ -40,8 +40,8 @@ class MainNavigationScreen extends ConsumerWidget {
             label: 'Archiv',
           ),
           NavigationDestination(
-            icon: Icon(Icons.label_outline),
-            selectedIcon: Icon(Icons.label),
+            icon: Icon(Icons.tag_outlined),
+            selectedIcon: Icon(Icons.tag),
             label: 'Tags',
           ),
         ],

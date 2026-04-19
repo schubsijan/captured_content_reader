@@ -519,11 +519,6 @@ class _NotesBottomSheetState extends ConsumerState<NotesBottomSheet> {
                           .toList(),
                     ),
                   ),
-                const SizedBox(height: 4),
-                Text(
-                  dateStr,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                ),
               ],
             ),
             onTap: () => _editArticleNote(note),

@@ -86,8 +86,8 @@ class _TagInputFieldState extends State<TagInputField> {
           ),
 
           // Natives Autocomplete mit erzwungenem Overlay für Dialoge
-          SizedBox(
-            width: 200,
+          Expanded(
+            flex: 1,
             child: Autocomplete<String>(
               optionsBuilder: (TextEditingValue textEditingValue) {
                 if (textEditingValue.text.isEmpty) {

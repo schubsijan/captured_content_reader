@@ -14,18 +14,196 @@ import '../../shared/ui/shared_note_list_tile.dart';
 import '../../reader/ui/article_reader_screen.dart';
 import '../providers/tag_management_providers.dart';
 
-class TagDetailScreen extends ConsumerWidget {
+class HighlightWithArticleId {
+  final Highlight highlight;
+  final String articleId;
+  final String? articleTitle;
+  final String? articleAuthors;
+
+HighlightWithArticleId({
+  required this.highlight,
+  required this.articleId,
+  this.articleTitle,
+  this.articleAuthors,
+  });
+}
+
+class NoteWithArticleId_Internal {
+  final ArticleNote note;
+  final String articleId;
+  final String? articleTitle;
+  final String? articleAuthors;
+
+  NoteWithArticleId_Internal({
+    required this.note,
+    required this.articleId,
+    this.articleTitle,
+    this.articleAuthors,
+  });
+}
+
+class TagDetailScreenDialogs {
+  static Future<String?> showRenameDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String currentName,
+  ) async {
+    final controller = TextEditingController(text: currentName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tag umbenennen'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Neuer Name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Umbenennen'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty && result != currentName) {
+      await renameTag(ref, currentName, result);
+      return result;
+    }
+    return null;
+  }
+
+  static Future<void> showDeleteDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String tagName,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tag löschen?'),
+        content: Text('Tag "$tagName" wirklich löschen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Löschen', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await deleteTag(ref, tagName);
+    }
+  }
+}
+
+class TagDetailScreen extends ConsumerStatefulWidget {
   final String tagName;
 
   const TagDetailScreen({super.key, required this.tagName});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TagDetailScreen> createState() => _TagDetailScreenState();
+}
+
+class _TagDetailScreenState extends ConsumerState<TagDetailScreen> {
+  late String _currentTagName;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTagName = widget.tagName;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(tagName),
+          title: Text(_currentTagName),
+          actions: [
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'rename') {
+                  final controller = TextEditingController(text: _currentTagName);
+                  final newName = await showDialog<String>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Tag umbenennen'),
+                      content: TextField(
+                        controller: controller,
+                        decoration: const InputDecoration(
+                          labelText: 'Neuer Name',
+                          border: OutlineInputBorder(),
+                        ),
+                        autofocus: true,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Abbrechen'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, controller.text.trim()),
+                          child: const Text('Umbenennen'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (newName != null && newName.isNotEmpty && newName != _currentTagName) {
+                    await renameTag(ref, _currentTagName, newName);
+                    if (mounted) {
+                      setState(() {
+                        _currentTagName = newName;
+                      });
+                    }
+                  }
+                } else if (value == 'delete') {
+                  await TagDetailScreenDialogs.showDeleteDialog(context, ref, _currentTagName);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'rename',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 20),
+                      SizedBox(width: 12),
+                      Text('Umbenennen'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 20, color: Colors.red),
+                      SizedBox(width: 12),
+                      Text(
+                        'Löschen',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Artikel'),
@@ -36,9 +214,9 @@ class TagDetailScreen extends ConsumerWidget {
         ),
         body: TabBarView(
           children: [
-            _ArticleList(tagName: tagName),
-            _HighlightList(tagName: tagName),
-            _NoteList(tagName: tagName),
+            _ArticleList(tagName: _currentTagName),
+            _HighlightList(tagName: _currentTagName),
+            _NoteList(tagName: _currentTagName),
           ],
         ),
       ),
@@ -105,6 +283,19 @@ final tagHighlightsStreamProvider =
         final highlights = <HighlightWithArticleId>[];
 
         for (final articleId in articleIds) {
+          // Load article meta for title and authors
+          String? articleTitle;
+          String? articleAuthors;
+          try {
+            final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+            if (await metaFile.exists()) {
+              final metaContent = await metaFile.readAsString();
+              final meta = jsonDecode(metaContent);
+              articleTitle = meta['title'] as String?;
+              articleAuthors = ((meta['authors'] as List<dynamic>?)?.join(', '));
+            }
+          } catch (_) {}
+
           final highlightsFile = File(
             p.join(appDir.path, articleId, 'highlights.json'),
           );
@@ -121,6 +312,8 @@ final tagHighlightsStreamProvider =
                     HighlightWithArticleId(
                       highlight: Highlight.fromJson(item),
                       articleId: articleId,
+                      articleTitle: articleTitle,
+                      articleAuthors: articleAuthors,
                     ),
                   );
                 }
@@ -134,7 +327,7 @@ final tagHighlightsStreamProvider =
     });
 
 final tagNotesStreamProvider =
-    StreamProvider.family<List<NoteWithArticleId>, String>((ref, tagName) {
+    StreamProvider.family<List<NoteWithArticleId_Internal>, String>((ref, tagName) {
       final db = ref.watch(databaseProvider);
 
       ref.watch(_tagIndexChangeProvider);
@@ -153,9 +346,22 @@ final tagNotesStreamProvider =
             .map((row) => row.read(db.tagIndex.articleId)!)
             .toList();
 
-        final notes = <NoteWithArticleId>[];
+        final notes = <NoteWithArticleId_Internal>[];
 
         for (final articleId in articleIds) {
+          // Load article meta for title and authors
+          String? articleTitle;
+          String? articleAuthors;
+          try {
+            final metaFile = File(p.join(appDir.path, articleId, 'meta.json'));
+            if (await metaFile.exists()) {
+              final metaContent = await metaFile.readAsString();
+              final meta = jsonDecode(metaContent);
+              articleTitle = meta['title'] as String?;
+              articleAuthors = ((meta['authors'] as List<dynamic>?)?.join(', '));
+            }
+          } catch (_) {}
+
           final notesFile = File(p.join(appDir.path, articleId, 'notes.json'));
           if (await notesFile.exists()) {
             try {
@@ -167,9 +373,11 @@ final tagNotesStreamProvider =
                     (item['tags'] as List<dynamic>?)?.cast<String>() ?? [];
                 if (tags.contains(tagName)) {
                   notes.add(
-                    NoteWithArticleId(
+                    NoteWithArticleId_Internal(
                       note: ArticleNote.fromJson(item),
                       articleId: articleId,
+                      articleTitle: articleTitle,
+                      articleAuthors: articleAuthors,
                     ),
                   );
                 }
@@ -303,6 +511,8 @@ class _HighlightListTile extends StatelessWidget {
     return SharedHighlightListTile(
       highlight: item.highlight,
       articleId: item.articleId,
+      articleTitle: item.articleTitle,
+      articleAuthors: item.articleAuthors,
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -318,7 +528,7 @@ class _HighlightListTile extends StatelessWidget {
 }
 
 class _NoteListTile extends StatelessWidget {
-  final NoteWithArticleId item;
+  final NoteWithArticleId_Internal item;
 
   const _NoteListTile({required this.item});
 
@@ -327,6 +537,8 @@ class _NoteListTile extends StatelessWidget {
     return SharedNoteListTile(
       note: item.note,
       articleId: item.articleId,
+      articleTitle: item.articleTitle,
+      articleAuthors: item.articleAuthors,
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(

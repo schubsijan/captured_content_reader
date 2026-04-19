@@ -57,7 +57,7 @@ class TagOverviewScreen extends ConsumerWidget {
                       color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.label, color: Colors.blue),
+                    child: const Icon(Icons.tag, color: Colors.blue),
                   ),
                   title: Text(
                     tag.name,
@@ -69,9 +69,13 @@ class TagOverviewScreen extends ConsumerWidget {
                     children: [
                       if (tag.articleCount > 0)
                         _buildChip('${tag.articleCount} Artikel'),
-                      if (tag.highlightCount > 0)
+                      if (tag.highlightCount == 1)
+                        _buildChip('${tag.highlightCount} Highlight'),
+                      if (tag.highlightCount > 1)
                         _buildChip('${tag.highlightCount} Highlights'),
-                      if (tag.noteCount > 0)
+                      if (tag.noteCount == 1)
+                        _buildChip('${tag.noteCount} Notiz'),
+                      if (tag.noteCount > 1)
                         _buildChip('${tag.noteCount} Notizen'),
                     ],
                   ),
@@ -212,4 +216,3 @@ class TagOverviewScreen extends ConsumerWidget {
     );
   }
 }
-

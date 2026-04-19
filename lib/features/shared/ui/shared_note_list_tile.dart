@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../../models/article_note.dart';
 
 class NoteWithArticleId {
@@ -12,6 +11,8 @@ class NoteWithArticleId {
 class SharedNoteListTile extends StatelessWidget {
   final ArticleNote note;
   final String? articleId;
+  final String? articleTitle;
+  final String? articleAuthors;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -19,14 +20,81 @@ class SharedNoteListTile extends StatelessWidget {
     super.key,
     required this.note,
     this.articleId,
+    this.articleTitle,
+    this.articleAuthors,
     this.onTap,
     this.onLongPress,
   });
 
+  Widget _buildTagChip(String tag) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        '#$tag',
+        style: const TextStyle(fontSize: 10, color: Colors.black54),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('dd.MM.yyyy HH:mm').format(note.createdAt);
     final hasTags = note.tags.isNotEmpty;
+
+    final cardChildren = <Widget>[];
+
+    if (articleTitle != null) {
+      cardChildren.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              articleTitle!,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (articleAuthors != null && articleAuthors!.isNotEmpty)
+              Text(
+                articleAuthors!,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    }
+
+    cardChildren.add(
+      Text(
+        note.content,
+        style: TextStyle(color: Colors.grey.shade800),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+
+    if (hasTags) {
+      cardChildren.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Wrap(
+            spacing: 6.0,
+            runSpacing: 4.0,
+            children: note.tags.map((tag) => _buildTagChip(tag)).toList(),
+          ),
+        ),
+      );
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -43,56 +111,11 @@ class SharedNoteListTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'Notiz',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                note.content,
-                style: TextStyle(color: Colors.grey.shade800),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (hasTags) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6.0,
-                  runSpacing: 4.0,
-                  children: note.tags.map((tag) => _buildTagChip(tag)).toList(),
-                ),
-              ],
-              const SizedBox(height: 4),
-              Text(
-                dateStr,
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
-              ),
-            ],
+            children: cardChildren,
           ),
         ),
       ),
     );
   }
-
-  Widget _buildTagChip(String tag) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        '#$tag',
-        style: const TextStyle(fontSize: 10, color: Colors.black54),
-      ),
-    );
-  }
 }
+
